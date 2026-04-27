@@ -26,9 +26,14 @@ import {
   ArrowRight,
   FolderOpen,
   Coffee,
-  ShoppingBag
+  ShoppingBag,
+  LogOut
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useAuth } from '../hooks/use-auth';
+import { db } from '../lib/firebase';
+import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, Timestamp } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firestore';
 
 // ======= Types & Initial Data =======
 
@@ -42,11 +47,17 @@ type Point = {
   color: string;
   iconName: string;
   groupId: string | null;
+  createdAt?: any;
+  updatedAt?: any;
+  userId?: string;
 };
 
 type PointGroup = {
   id: string;
   name: string;
+  createdAt?: any;
+  updatedAt?: any;
+  userId?: string;
 };
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -80,11 +91,87 @@ const NOTIFICATIONS = [
 // ======= Main Application =======
 
 export default function UniPointsApp() {
+  const { user, loading, signIn, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
-  const [points, setPoints] = useState<Point[]>(INITIAL_POINTS);
-  const [groups, setGroups] = useState<PointGroup[]>(INITIAL_GROUPS);
+  const [points, setPoints] = useState<Point[]>([]);
+  const [groups, setGroups] = useState<PointGroup[]>([]);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
   const [lineConnected, setLineConnected] = useState(false);
+  const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string} | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const pointsRef = collection(db, 'users', user.uid, 'points');
+    const unsubPoints = onSnapshot(pointsRef, (snapshot) => {
+      const p = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id
+        } as Point;
+      });
+      setPoints(p);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'points');
+    });
+
+    const groupsRef = collection(db, 'users', user.uid, 'groups');
+    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
+      const g = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id
+        } as PointGroup;
+      });
+      setGroups(g);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'groups');
+    });
+
+    const profileRef = doc(db, 'users', user.uid, 'profile', 'info');
+    const unsubProfile = onSnapshot(profileRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setLineConnected(data.lineConnected || false);
+        setLineProfile(data.lineProfile || null);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'profile');
+    });
+
+    return () => {
+      unsubPoints();
+      unsubGroups();
+      unsubProfile();
+    };
+  }, [user]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center w-full h-[100dvh] bg-gray-50"><div className="w-8 h-8 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"/></div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-[100dvh] bg-gray-50">
+        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 mb-6">
+          <Layers className="w-10 h-10 text-white" />
+        </div>
+        <h1 className="text-4xl font-black tracking-tight text-gray-900 mb-2">UniPoints</h1>
+        <p className="text-gray-500 font-medium mb-8">全方位跨界點數整合平台</p>
+        <button onClick={signIn} className="px-8 py-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center font-bold text-gray-700 hover:shadow-md hover:bg-gray-50 transition-all active:scale-95">
+          <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          使用 Google 登入
+        </button>
+      </div>
+    );
+  }
 
   const unreadCount = NOTIFICATIONS.filter(n => n.isUnread).length;
 
@@ -148,10 +235,10 @@ export default function UniPointsApp() {
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          {activeTab === 'home' && <HomeTab key="home" points={points} setPoints={setPoints} groups={groups} setGroups={setGroups} />}
+          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} />}
           {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} setActivities={setActivities} />}
           {activeTab === 'notifications' && <NotificationsTab key="notifications" />}
-          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} setLineConnected={setLineConnected} />}
+          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} />}
         </AnimatePresence>
       </main>
 
@@ -190,7 +277,7 @@ export default function UniPointsApp() {
 
 // ======= Individual Tabs =======
 
-function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], setPoints: any, groups: PointGroup[], setGroups: any }) {
+function HomeTab({ points, groups, user, logout }: { points: Point[], groups: PointGroup[], user: any, logout: () => void }) {
   const [editingPoint, setEditingPoint] = useState<Point | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -231,7 +318,7 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
     setHoverAction(null);
   };
 
-  const onDrop = (e: React.DragEvent, targetId: string, type: 'group' | 'point') => {
+  const onDrop = async (e: React.DragEvent, targetId: string, type: 'group' | 'point') => {
     e.preventDefault();
     const sourceId = e.dataTransfer.getData('pointId');
     if (!sourceId || sourceId === targetId) {
@@ -241,7 +328,11 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
 
     if (type === 'group') {
       // Move to folder
-      setPoints(points.map(p => p.id === sourceId ? { ...p, groupId: targetId } : p));
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: targetId, updatedAt: Timestamp.now() }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `points/${sourceId}`);
+      }
     } else if (type === 'point') {
       const source = points.find(p => p.id === sourceId);
       const target = points.find(p => p.id === targetId);
@@ -251,18 +342,36 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
           // Verify Merge
           const confirmMerge = window.confirm(`是否將 ${source.provider} 點數合併？`);
           if (confirmMerge) {
-            setPoints(points.map(p => {
-              if (p.id === targetId) return { ...p, balance: p.balance + source.balance, expiring: p.expiring + source.expiring };
-              return p;
-            }).filter(p => p.id !== sourceId));
+            try {
+              // Update target
+              await setDoc(doc(db, 'users', user.uid, 'points', targetId), {
+                balance: target.balance + source.balance,
+                expiring: target.expiring + source.expiring,
+                updatedAt: Timestamp.now()
+              }, { merge: true });
+              // Delete source
+              await deleteDoc(doc(db, 'users', user.uid, 'points', sourceId));
+            } catch (err) {
+              handleFirestoreError(err, OperationType.UPDATE, `points/merge`);
+            }
           }
         } else {
           // Create new group and put both inside
           const groupName = window.prompt('請輸入新群組名稱：', '新群組');
           if (groupName) {
             const newGroupId = `g-${crypto.randomUUID()}`;
-            setGroups([...groups, { id: newGroupId, name: groupName }]);
-            setPoints(points.map(p => (p.id === sourceId || p.id === targetId) ? { ...p, groupId: newGroupId } : p));
+            try {
+              await setDoc(doc(db, 'users', user.uid, 'groups', newGroupId), {
+                name: groupName,
+                userId: user.uid,
+                createdAt: Timestamp.now(),
+                updatedAt: Timestamp.now()
+              });
+              await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: newGroupId, updatedAt: Timestamp.now() }, { merge: true });
+              await setDoc(doc(db, 'users', user.uid, 'points', targetId), { groupId: newGroupId, updatedAt: Timestamp.now() }, { merge: true });
+            } catch (err) {
+              handleFirestoreError(err, OperationType.CREATE, `groups/${newGroupId}`);
+            }
           }
         }
       }
@@ -276,9 +385,43 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
     setHoverAction(null);
   };
 
-  const removeGroup = (groupId: string) => {
-    setGroups(groups.filter(g => g.id !== groupId));
-    setPoints(points.map(p => p.groupId === groupId ? { ...p, groupId: null } : p));
+  const removeGroup = async (groupId: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'groups', groupId));
+      // Reset points in this group
+      const groupPoints = points.filter(p => p.groupId === groupId);
+      for (const p of groupPoints) {
+        await setDoc(doc(db, 'users', user.uid, 'points', p.id), { groupId: null, updatedAt: Timestamp.now() }, { merge: true });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `groups/${groupId}`);
+    }
+  };
+
+  const handleSavePoint = async (p: Point) => {
+    try {
+      const isNew = !points.find(x => x.id === p.id);
+      const data = {
+        ...p,
+        userId: user.uid,
+        updatedAt: Timestamp.now(),
+        createdAt: isNew ? Timestamp.now() : (points.find(x => x.id === p.id)?.createdAt as any || Timestamp.now())
+      };
+      await setDoc(doc(db, 'users', user.uid, 'points', p.id), data);
+      setIsAddingMode(false);
+      setEditingPoint(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `points/${p.id}`);
+    }
+  };
+
+  const handleDeletePoint = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'points', id));
+      setEditingPoint(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `points/${id}`);
+    }
   };
 
   const unassignedPoints = points.filter(p => p.groupId === null);
@@ -287,7 +430,7 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 scrollbar-hide relative">
       <div className="flex justify-between items-end">
         <div>
-          <p className="text-gray-500 text-sm font-medium">早安，開發者 👋</p>
+          <p className="text-gray-500 text-sm font-medium flex items-center">早安，{user.displayName || '使用者'} 👋 <button onClick={() => logout()} className="ml-3 text-xs opacity-50 hover:opacity-100"><LogOut className="w-3 h-3 inline mr-1"/>登出</button></p>
           <h1 className="text-3xl font-black text-gray-900 mt-1">跨界資產總覽</h1>
         </div>
         <button 
@@ -406,18 +549,9 @@ function HomeTab({ points, setPoints, groups, setGroups }: { points: Point[], se
 
       {/* Modals */}
       <AnimatePresence>
-        {editingPoint && <EditPointModal point={editingPoint} onClose={() => setEditingPoint(null)} onSave={(p) => {
-          setPoints(points.map(pt => pt.id === p.id ? p : pt));
-          setEditingPoint(null);
-        }} onDelete={(id) => {
-          setPoints(points.filter(pt => pt.id !== id));
-          setEditingPoint(null);
-        }} />}
+        {editingPoint && <EditPointModal point={editingPoint} onClose={() => setEditingPoint(null)} onSave={handleSavePoint} onDelete={handleDeletePoint} />}
 
-        {isAddingMode && <EditPointModal isNew onClose={() => setIsAddingMode(false)} onSave={(p) => {
-          setPoints([...points, p]);
-          setIsAddingMode(false);
-        }} onDelete={()=>{}} />}
+        {isAddingMode && <EditPointModal isNew onClose={() => setIsAddingMode(false)} onSave={handleSavePoint} onDelete={()=>{}} />}
       </AnimatePresence>
     </div>
   )
@@ -613,7 +747,55 @@ function NotificationsTab() {
   )
 }
 
-function SettingsTab({ lineConnected, setLineConnected }: { lineConnected: boolean, setLineConnected: React.Dispatch<React.SetStateAction<boolean>> }) {
+function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: boolean, lineProfile: any, user: any }) {
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const handleLineConnect = async () => {
+    if (lineConnected) {
+      const confirmDisconnect = window.confirm('確定要解除綁定 LINE 帳號嗎？您將不會再收到點數到期通知。');
+      if (confirmDisconnect) {
+        try {
+          await setDoc(doc(db, 'users', user.uid, 'profile', 'info'), {
+            lineConnected: false,
+            lineProfile: null,
+            userId: user.uid,
+            updatedAt: Timestamp.now()
+          }, { merge: true });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, 'profile/info');
+        }
+      }
+      return;
+    }
+    
+    // 模擬 LINE 登入 OAuth 流程
+    setIsLoggingIn(true);
+    setTimeout(async () => {
+      try {
+        const profileInfo = {
+          name: 'LINE 用戶 (GD牌)',
+          pictureUrl: 'https://picsum.photos/id/64/200/200'
+        };
+        const docRef = doc(db, 'users', user.uid, 'profile', 'info');
+        const snapshot = await getDoc(docRef);
+        const payload: any = {
+          lineConnected: true,
+          lineProfile: profileInfo,
+          userId: user.uid,
+          updatedAt: Timestamp.now(),
+        };
+        if (!snapshot.exists()) {
+            payload.createdAt = Timestamp.now();
+        }
+        await setDoc(docRef, payload, { merge: true });
+        setIsLoggingIn(false);
+      } catch(err) {
+        setIsLoggingIn(false);
+        handleFirestoreError(err, OperationType.UPDATE, 'profile/info');
+      }
+    }, 1500);
+  };
+
   return (
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 max-w-2xl">
       <h1 className="text-3xl font-black text-gray-900">系統設定</h1>
@@ -625,7 +807,7 @@ function SettingsTab({ lineConnected, setLineConnected }: { lineConnected: boole
             <span className="w-8 h-px bg-gray-200 mr-3"></span> 推播與通知整合
         </h3>
 
-        <div className="flex items-center justify-between z-10 relative">
+        <div className="flex flex-col md:flex-row md:items-center justify-between z-10 relative space-y-6 md:space-y-0">
           <div className="flex items-center space-x-5">
             <div className={clsx("w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-sm transition-all duration-500", lineConnected ? "bg-[#06C755] shadow-[#06C755]/20" : "bg-gray-200")}>
               <MessageCircle className="w-7 h-7" />
@@ -637,31 +819,48 @@ function SettingsTab({ lineConnected, setLineConnected }: { lineConnected: boole
           </div>
           
           <button
-            onClick={() => setLineConnected(!lineConnected)}
+            onClick={handleLineConnect}
+            disabled={isLoggingIn}
             className={clsx(
-              "relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-[#06C755] focus:ring-offset-2",
-              lineConnected ? 'bg-[#06C755]' : 'bg-gray-200'
+              "relative inline-flex items-center justify-center h-12 px-6 rounded-xl font-bold transition-all duration-300 focus:outline-none",
+              lineConnected 
+                ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
+                : 'bg-[#06C755] text-white hover:bg-[#05b34c] shadow-lg shadow-[#06C755]/30 group-hover:scale-105',
+              isLoggingIn && 'opacity-70 cursor-not-allowed'
             )}
           >
-            <span
-              className={clsx(
-                "inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform duration-300",
-                lineConnected ? 'translate-x-7' : 'translate-x-1'
-              )}
-            />
+            {isLoggingIn ? (
+               <span className="flex items-center"><div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"/> 登入中...</span>
+            ) : lineConnected ? (
+               '解除綁定'
+            ) : (
+               '登入 LINE 綁定'
+            )}
           </button>
         </div>
         
         <AnimatePresence>
-          {lineConnected && (
+          {lineConnected && lineProfile && (
             <motion.div
               initial={{ opacity: 0, height: 0, marginTop: 0 }}
               animate={{ opacity: 1, height: 'auto', marginTop: 24 }}
               exit={{ opacity: 0, height: 0, marginTop: 0 }}
-              className="pt-5 border-t border-gray-100/50 flex items-center text-sm font-bold text-[#06C755]"
+              className="pt-5 border-t border-gray-100/50"
             >
-              <CheckCircle2 className="w-5 h-5 mr-2" />
-              已成功連動，服務啟動中
+              <div className="flex items-center justify-between bg-[#06C755]/5 p-4 rounded-2xl border border-[#06C755]/10">
+                <div className="flex items-center space-x-3">
+                  <img src={lineProfile.pictureUrl} alt="LINE Profile" className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{lineProfile.name}</p>
+                    <p className="text-xs font-semibold text-[#06C755] flex items-center mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 已連動 Messaging API
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400 font-medium">
+                  將透過「GD牌-提醒地點\待辦事項」推播
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

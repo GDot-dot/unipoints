@@ -1,0 +1,152 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Universal Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprints
+    function isValidPoint(data, userId) {
+      // Must have exactly these keys plus optional expireDate, groupId
+      let hasRequired = data.keys().hasAll(['provider', 'type', 'balance', 'expiring', 'color', 'iconName', 'userId', 'createdAt', 'updatedAt']);
+      let sizeOk = (data.keys().size() == 9) || (data.keys().size() == 10 && (data.keys().hasAny(['expireDate', 'groupId']))) || (data.keys().size() == 11 && data.keys().hasAll(['expireDate', 'groupId']));
+      
+      let typesOk = data.provider is string && data.provider.size() <= 100 &&
+                    data.type is string && data.type.size() <= 100 &&
+                    data.balance is number && data.balance >= 0 &&
+                    data.expiring is number && data.expiring >= 0 &&
+                    data.color is string && data.color.size() <= 50 &&
+                    data.iconName is string && data.iconName.size() <= 50 &&
+                    data.userId == userId &&
+                    data.createdAt is timestamp &&
+                    data.updatedAt is timestamp;
+                    
+      let expireDateOk = !('expireDate' in data) || data.expireDate == null || (data.expireDate is string && data.expireDate.size() <= 20);
+      let groupIdOk = !('groupId' in data) || data.groupId == null || (data.groupId is string && data.groupId.size() <= 128);
+
+      return hasRequired && sizeOk && typesOk && expireDateOk && groupIdOk;
+    }
+
+    function isValidGroup(data, userId) {
+      let hasRequired = data.keys().hasAll(['name', 'userId', 'createdAt', 'updatedAt']);
+      let sizeOk = data.keys().size() == 4;
+      
+      let typesOk = data.name is string && data.name.size() <= 100 &&
+                    data.userId == userId &&
+                    data.createdAt is timestamp &&
+                    data.updatedAt is timestamp;
+                    
+      return hasRequired && sizeOk && typesOk;
+    }
+
+    function isValidProfile(data, userId) {
+      let hasRequired = data.keys().hasAll(['lineConnected', 'userId', 'createdAt', 'updatedAt']);
+      let sizeOk = data.keys().size() == 4 || (data.keys().size() == 5 && data.keys().hasAny(['lineProfile']));
+      
+      let typesOk = data.lineConnected is bool &&
+                    data.userId == userId &&
+                    data.createdAt is timestamp &&
+                    data.updatedAt is timestamp;
+                    
+      let lineProfileOk = !('lineProfile' in data) || data.lineProfile == null || (
+        data.lineProfile is map && 
+        data.lineProfile.keys().hasAll(['name', 'pictureUrl']) && 
+        data.lineProfile.name is string && data.lineProfile.name.size() <= 100 &&
+        data.lineProfile.pictureUrl is string && data.lineProfile.pictureUrl.size() <= 500
+      );
+
+      return hasRequired && sizeOk && typesOk && lineProfileOk;
+    }
+
+    // Match users
+    match /users/{userId} {
+      match /points/{pointId} {
+        allow read: if isOwner(userId);
+        
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+        
+        allow create: if isOwner(userId) && 
+                         isValidId(pointId) && 
+                         isValidPoint(incoming(), userId) &&
+                         incoming().createdAt == request.time &&
+                         incoming().updatedAt == request.time;
+                         
+        allow update: if isOwner(userId) && 
+                         isValidId(pointId) &&
+                         isValidPoint(incoming(), userId) &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().userId == existing().userId &&
+                         incoming().updatedAt == request.time &&
+                         // All updatable fields
+                         incoming().diff(existing()).affectedKeys().hasOnly(['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'updatedAt']);
+                         
+        allow delete: if isOwner(userId);
+      }
+
+      match /groups/{groupId} {
+        allow read: if isOwner(userId);
+        
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+        
+        allow create: if isOwner(userId) && 
+                         isValidId(groupId) && 
+                         isValidGroup(incoming(), userId) &&
+                         incoming().createdAt == request.time &&
+                         incoming().updatedAt == request.time;
+                         
+        allow update: if isOwner(userId) && 
+                         isValidId(groupId) &&
+                         isValidGroup(incoming(), userId) &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().userId == existing().userId &&
+                         incoming().updatedAt == request.time &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+                         
+        allow delete: if isOwner(userId);
+      }
+
+      match /profile/info {
+        allow read: if isOwner(userId);
+        
+        allow list: if false; // only get is needed for single profile info
+        
+        allow create: if isOwner(userId) && 
+                         isValidProfile(incoming(), userId) &&
+                         incoming().createdAt == request.time &&
+                         incoming().updatedAt == request.time;
+                         
+        allow update: if isOwner(userId) && 
+                         isValidProfile(incoming(), userId) &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().userId == existing().userId &&
+                         incoming().updatedAt == request.time &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['lineConnected', 'lineProfile', 'updatedAt']);
+                         
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

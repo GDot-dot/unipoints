@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Point": {
+      "title": "Point",
+      "description": "Represents a user's point balance from a specific provider.",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "type": { "type": "string" },
+        "balance": { "type": "number" },
+        "expiring": { "type": "number" },
+        "expireDate": { "type": ["string", "null"] },
+        "color": { "type": "string" },
+        "iconName": { "type": "string" },
+        "groupId": { "type": ["string", "null"] },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["provider", "type", "balance", "expiring", "color", "iconName", "userId", "createdAt", "updatedAt"]
+    },
+    "PointGroup": {
+      "title": "PointGroup",
+      "description": "Groups of points.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "userId", "createdAt", "updatedAt"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile settings including LINE connection.",
+      "type": "object",
+      "properties": {
+        "lineConnected": { "type": "boolean" },
+        "lineProfile": {
+          "type": ["object", "null"],
+          "properties": {
+            "name": { "type": "string" },
+            "pictureUrl": { "type": "string" }
+          }
+        },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["lineConnected", "userId", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/points/{pointId}": {
+      "schema": { "$ref": "#/entities/Point" },
+      "description": "User's points data."
+    },
+    "/users/{userId}/groups/{groupId}": {
+      "schema": { "$ref": "#/entities/PointGroup" },
+      "description": "User's points groups."
+    },
+    "/users/{userId}/profile/info": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "User's specific profile info and LINE integration."
+    }
+  }
+}
