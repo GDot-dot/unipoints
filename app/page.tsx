@@ -370,7 +370,7 @@ export default function UniPointsApp() {
           {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} />}
           {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} user={user} />}
           {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={allNotifications} user={user} setNotifications={setNotifications} />}
-          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} />}
+          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} points={points} />}
         </AnimatePresence>
       </main>
 
@@ -563,7 +563,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 scrollbar-hide relative">
       <div className="flex justify-between items-end">
         <div>
-          <p className="text-gray-500 text-sm font-medium flex items-center">早安，{user.displayName || '使用者'} 👋 <button onClick={() => logout()} className="ml-3 text-xs opacity-50 hover:opacity-100"><LogOut className="w-3 h-3 inline mr-1"/>登出</button></p>
+          <p className="text-gray-500 text-sm font-medium flex items-center">Hi, {user.displayName || '使用者'} <button onClick={() => logout()} className="ml-3 text-xs opacity-50 hover:opacity-100"><LogOut className="w-3 h-3 inline mr-1"/>登出</button></p>
           <h1 className="text-3xl font-black text-gray-900 mt-1">跨界資產總覽</h1>
         </div>
         <button 
@@ -1179,8 +1179,71 @@ function NotificationsTab({ notifications, user, setNotifications }: { notificat
   )
 }
 
-function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSimulateDateStr }: { lineConnected: boolean, lineProfile: any, user: any, simulateDateStr: string, setSimulateDateStr: (s: string) => void }) {
+function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSimulateDateStr, points }: { lineConnected: boolean, lineProfile: any, user: any, simulateDateStr: string, setSimulateDateStr: (s: string) => void, points: Point[] }) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const handleSimulateNotification = async () => {
+    if (!lineConnected || !lineProfile) return;
+    
+    const today = simulateDateStr ? new Date(simulateDateStr) : new Date();
+    const duePoints = points.filter(p => {
+      if (p.expiring > 0 && p.expireDate) {
+        const expiryDate = new Date(p.expireDate);
+        const diffDays = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        return Array.isArray(p.reminderDays) && p.reminderDays.some(rd => {
+          if (typeof rd === 'number') return rd === diffDays;
+          if (typeof rd === 'string') return rd === today.toISOString().split('T')[0];
+          return false;
+        });
+      }
+      return false;
+    });
+
+    if (duePoints.length === 0) {
+      alert('📅 此模擬日期（' + (simulateDateStr || '今天') + '）沒有點數需要觸發到期提醒。\n(請至主頁確認點數到期日與提醒設定)');
+      return;
+    }
+
+    try {
+      let successCount = 0;
+      for (const point of duePoints) {
+        const expiryDate = new Date(point.expireDate!);
+        const diffDays = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const messageText = `🔔 UniPoints 到期自動提醒 (模擬測試)\n----------------------------\n點數通路: ${point.provider}\n點數類型: ${point.type}\n即將到期: ${point.expiring} 點\n到期日期: ${point.expireDate} (約於 ${diffDays} 天後)\n\n請記得於到期前進行消費或兌換唷！`;
+
+        const res = await fetch('/api/line/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: lineProfile.lineUserId,
+            message: messageText
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Sync with in-app notifications
+          const noteId = `n-${crypto.randomUUID()}`;
+          await setDoc(doc(db, 'users', user.uid, 'notifications', noteId), {
+            id: noteId,
+            title: '觸發自動 LINE 提醒 (模擬)',
+            message: `已針對 ${point.provider} 發送模擬提醒至 LINE。`,
+            time: '現在',
+            isUnread: true,
+            userId: user.uid
+          });
+          successCount++;
+        } else {
+          alert(`❌ 發送失敗 (${point.provider}): ${data.details?.message || data.error}\n請確認 LINE_CHANNEL_ACCESS_TOKEN 是否正確。`);
+          return; // Stop early if auth fails
+        }
+      }
+      alert(`✅ 模擬任務完成！已發送 ${successCount} 則 LINE 通知。`);
+    } catch (err) {
+      console.error(err);
+      alert('❌ 模擬發送失敗。');
+    }
+  };
 
   const handleLineConnect = async () => {
     if (lineConnected) {
@@ -1291,7 +1354,7 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
                       });
                       alert('✅ 測試通知已發送，請檢查 LINE！');
                     } else {
-                      alert(`❌ 發送失敗: ${data.error || '未知錯誤'}\n請確保已在環境變數中設定 LINE_CHANNEL_ACCESS_TOKEN`);
+                      alert(`❌ 發送失敗: ${data.details?.message || data.error || '未知錯誤'}\n\n請檢查：\n1. 環境變數 LINE_CHANNEL_ACCESS_TOKEN 是否正確 (應為 Messaging API 的長效 Token)\n2. 確保沒有包含多餘的空格或換行`);
                     }
                   } catch (e) {
                     alert('❌ 發生異常，請確認環境變數設定。');
@@ -1357,6 +1420,18 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
               </button>
             </div>
             <p className="text-[10px] text-gray-400 mt-2 font-medium">調整日期以測試標籤顯示、點數到期通知之觸發邏輯。</p>
+          </div>
+
+          <div className="pt-4 border-t border-gray-50">
+            <button 
+              onClick={handleSimulateNotification}
+              disabled={!lineConnected || !lineProfile}
+              className="w-full bg-blue-500 text-white rounded-xl py-3 font-bold hover:bg-blue-600 transition-colors disabled:bg-gray-200 disabled:text-gray-400 flex items-center justify-center"
+            >
+              <MessageCircle className="w-4 h-4 mr-2" />
+              觸發模擬到期 LINE 通知
+            </button>
+            <p className="text-[10px] text-gray-400 mt-2 font-medium">若模擬日期有符合提醒天數的點數，將會發送 LINE 訊息到您的手機。</p>
           </div>
         </div>
       </div>
