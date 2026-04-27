@@ -900,7 +900,7 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
                   </div>
                 </div>
                 <div className="text-xs text-gray-400 font-medium">
-                  將透過「GD牌-提醒地點\待辦事項」推播
+                  將透過「點數整合_UniPoints」推播
                 </div>
               </div>
             </motion.div>

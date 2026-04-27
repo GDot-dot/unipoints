@@ -5,6 +5,7 @@
       "description": "Represents a user's point balance from a specific provider.",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "provider": { "type": "string" },
         "type": { "type": "string" },
         "balance": { "type": "number" },
@@ -24,6 +25,7 @@
       "description": "Groups of points.",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "name": { "type": "string" },
         "userId": { "type": "string" },
         "createdAt": { "type": "number" },
@@ -36,6 +38,7 @@
       "description": "User profile settings including LINE connection.",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "lineConnected": { "type": "boolean" },
         "lineProfile": {
           "type": ["object", "null"],

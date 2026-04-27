@@ -30,46 +30,45 @@ service cloud.firestore {
 
     // Validation Blueprints
     function isValidPoint(data, userId) {
-      // Must have exactly these keys plus optional expireDate, groupId
-      let hasRequired = data.keys().hasAll(['provider', 'type', 'balance', 'expiring', 'color', 'iconName', 'userId', 'createdAt', 'updatedAt']);
-      let sizeOk = (data.keys().size() == 9) || (data.keys().size() == 10 && (data.keys().hasAny(['expireDate', 'groupId']))) || (data.keys().size() == 11 && data.keys().hasAll(['expireDate', 'groupId']));
-      
-      let typesOk = data.provider is string && data.provider.size() <= 100 &&
-                    data.type is string && data.type.size() <= 100 &&
-                    data.balance is number && data.balance >= 0 &&
-                    data.expiring is number && data.expiring >= 0 &&
-                    data.color is string && data.color.size() <= 50 &&
-                    data.iconName is string && data.iconName.size() <= 50 &&
-                    data.userId == userId &&
-                    data.createdAt is timestamp &&
-                    data.updatedAt is timestamp;
+      let typesOk = (!('provider' in data) || (data.provider is string && data.provider.size() <= 100)) &&
+                    (!('type' in data) || (data.type is string && data.type.size() <= 100)) &&
+                    (!('balance' in data) || (data.balance is number && data.balance >= 0)) &&
+                    (!('expiring' in data) || (data.expiring is number && data.expiring >= 0)) &&
+                    (!('color' in data) || (data.color is string && data.color.size() <= 50)) &&
+                    (!('iconName' in data) || (data.iconName is string && data.iconName.size() <= 50)) &&
+                    (!('userId' in data) || (data.userId == userId)) &&
+                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
+                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
                     
       let expireDateOk = !('expireDate' in data) || data.expireDate == null || (data.expireDate is string && data.expireDate.size() <= 20);
       let groupIdOk = !('groupId' in data) || data.groupId == null || (data.groupId is string && data.groupId.size() <= 128);
+      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
 
-      return hasRequired && sizeOk && typesOk && expireDateOk && groupIdOk;
+      // Check if there are no shadow fields (allowed keys)
+      let allowedKeys = ['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'userId', 'createdAt', 'updatedAt', 'id'];
+      let noExtraKeys = data.keys().hasOnly(allowedKeys);
+
+      return typesOk && expireDateOk && groupIdOk && idOk && noExtraKeys;
     }
 
     function isValidGroup(data, userId) {
-      let hasRequired = data.keys().hasAll(['name', 'userId', 'createdAt', 'updatedAt']);
-      let sizeOk = data.keys().size() == 4;
+      let typesOk = (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+                    (!('userId' in data) || (data.userId == userId)) &&
+                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
+                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
       
-      let typesOk = data.name is string && data.name.size() <= 100 &&
-                    data.userId == userId &&
-                    data.createdAt is timestamp &&
-                    data.updatedAt is timestamp;
+      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
+      let allowedKeys = ['name', 'userId', 'createdAt', 'updatedAt', 'id'];
+      let noExtraKeys = data.keys().hasOnly(allowedKeys);
                     
-      return hasRequired && sizeOk && typesOk;
+      return typesOk && idOk && noExtraKeys;
     }
 
     function isValidProfile(data, userId) {
-      let hasRequired = data.keys().hasAll(['lineConnected', 'userId', 'createdAt', 'updatedAt']);
-      let sizeOk = data.keys().size() == 4 || (data.keys().size() == 5 && data.keys().hasAny(['lineProfile']));
-      
-      let typesOk = data.lineConnected is bool &&
-                    data.userId == userId &&
-                    data.createdAt is timestamp &&
-                    data.updatedAt is timestamp;
+      let typesOk = (!('lineConnected' in data) || (data.lineConnected is bool)) &&
+                    (!('userId' in data) || (data.userId == userId)) &&
+                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
+                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
                     
       let lineProfileOk = !('lineProfile' in data) || data.lineProfile == null || (
         data.lineProfile is map && 
@@ -78,7 +77,11 @@ service cloud.firestore {
         data.lineProfile.pictureUrl is string && data.lineProfile.pictureUrl.size() <= 500
       );
 
-      return hasRequired && sizeOk && typesOk && lineProfileOk;
+      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
+      let allowedKeys = ['lineConnected', 'lineProfile', 'userId', 'createdAt', 'updatedAt', 'id'];
+      let noExtraKeys = data.keys().hasOnly(allowedKeys);
+
+      return typesOk && lineProfileOk && idOk && noExtraKeys;
     }
 
     // Match users
@@ -90,6 +93,7 @@ service cloud.firestore {
         
         allow create: if isOwner(userId) && 
                          isValidId(pointId) && 
+                         incoming().keys().hasAll(['provider', 'type', 'balance', 'expiring', 'color', 'iconName', 'userId', 'createdAt', 'updatedAt']) &&
                          isValidPoint(incoming(), userId) &&
                          incoming().createdAt == request.time &&
                          incoming().updatedAt == request.time;
@@ -97,11 +101,11 @@ service cloud.firestore {
         allow update: if isOwner(userId) && 
                          isValidId(pointId) &&
                          isValidPoint(incoming(), userId) &&
-                         incoming().createdAt == existing().createdAt &&
-                         incoming().userId == existing().userId &&
+                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
+                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
                          // All updatable fields
-                         incoming().diff(existing()).affectedKeys().hasOnly(['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'updatedAt']);
+                         incoming().diff(existing()).affectedKeys().hasOnly(['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'updatedAt', 'id']);
                          
         allow delete: if isOwner(userId);
       }
@@ -113,6 +117,7 @@ service cloud.firestore {
         
         allow create: if isOwner(userId) && 
                          isValidId(groupId) && 
+                         incoming().keys().hasAll(['name', 'userId', 'createdAt', 'updatedAt']) &&
                          isValidGroup(incoming(), userId) &&
                          incoming().createdAt == request.time &&
                          incoming().updatedAt == request.time;
@@ -120,10 +125,10 @@ service cloud.firestore {
         allow update: if isOwner(userId) && 
                          isValidId(groupId) &&
                          isValidGroup(incoming(), userId) &&
-                         incoming().createdAt == existing().createdAt &&
-                         incoming().userId == existing().userId &&
+                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
+                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt', 'id']);
                          
         allow delete: if isOwner(userId);
       }
@@ -134,16 +139,17 @@ service cloud.firestore {
         allow list: if false; // only get is needed for single profile info
         
         allow create: if isOwner(userId) && 
+                         incoming().keys().hasAll(['lineConnected', 'userId', 'createdAt', 'updatedAt']) &&
                          isValidProfile(incoming(), userId) &&
                          incoming().createdAt == request.time &&
                          incoming().updatedAt == request.time;
                          
         allow update: if isOwner(userId) && 
                          isValidProfile(incoming(), userId) &&
-                         incoming().createdAt == existing().createdAt &&
-                         incoming().userId == existing().userId &&
+                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
+                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['lineConnected', 'lineProfile', 'updatedAt']);
+                         incoming().diff(existing()).affectedKeys().hasOnly(['lineConnected', 'lineProfile', 'updatedAt', 'id']);
                          
         allow delete: if isOwner(userId);
       }

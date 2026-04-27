@@ -1,21 +1,28 @@
-# Security Specification
+# Security Specification - UniPoints
 
 ## Data Invariants
-1. Users can only read and write their own points, groups, and profile.
-2. A point must belong to the user writing it.
-3. Timestamps (`createdAt`, `updatedAt`) must equal `request.time`.
-4. `userId` cannot be changed during an update.
+1. A Point document must belong to a user.
+2. A PointGroup must belong to a user.
+3. Access to Points and Groups is restricted to the owner of the user profile.
+4. Timestamps (createdAt, updatedAt) must be valid intervals.
+5. All IDs must be valid strings.
 
-## The "Dirty Dozen" Payloads
-1. Create a `Point` with an orphaned `userId` (spoofed ID).
-2. Create a `PointGroup` missing `userId` field.
-3. Update `Point` changing `userId`.
-4. Update `Profile` with `lineConnected` as a string instead of boolean.
-5. Create `Point` where `provider` is a 1MB string.
-6. Create `Point` with `balance` less than 0.
-7. Update `Point` with `expiring` greater than `balance` (logical, wait rules can't easily check fields against each other unless specified, we can just enforce limits or types).
-8. Delete another user's `PointGroup`.
-9. `get` another user's `Profile`.
-10. `list` points without `userId` where condition.
-11. Update `Point` with a spoofed `updatedAt`.
-12. Create `Profile` with an `isAdmin: true` ghost field.
+## The Dirty Dozen Payloads (Rejection Targets)
+1. **Identity Spoofing**: Attempt to create a point for another user.
+2. **State Shortcutting**: Attempt to update `balance` without proper ownership.
+3. **Resource Poisoning**: Use a 1MB string for `provider` name.
+4. **Invalid Timestamps**: Pass a future or very old timestamp for `createdAt`.
+5. **Unauthorized Read**: Attempt to list points of another user.
+6. **Shadow Fields**: Attempt to save an undocumented field like `isAdmin: true`.
+7. **Bypass ID validation**: Use special characters in document IDs.
+8. **Null Values**: Pass `null` for required fields like `provider`.
+9. **Negative Balance**: Set `balance` to -100.
+10. **Type Mismatch**: Pass a string for `balance`.
+11. **Excessive Group ID**: Use a string > 128 chars for `groupId`.
+12. **Insecure Profile Update**: Attempt to change `userId` in existing profile.
+
+## Verification
+- Firestore rules implement `isValidPoint`, `isValidGroup`, and `isValidProfile`.
+- Ownership is checked via `isOwner(userId)`.
+- Keys are restricted via `hasOnly(allowedKeys)`.
+- Timestamps are enforced via `request.time`.
