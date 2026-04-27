@@ -32,7 +32,7 @@ import {
 import clsx from 'clsx';
 import { useAuth } from '../hooks/use-auth';
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore';
 
 // ======= Types & Initial Data =======
@@ -100,7 +100,58 @@ export default function UniPointsApp() {
   const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string} | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return; // user will load eventually
+
+    // LINE OAuth callback handler
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      const storedState = window.sessionStorage.getItem('line_oauth_state');
+
+      if (code && state && storedState === state) {
+        window.sessionStorage.removeItem('line_oauth_state');
+        const redirectUri = window.location.origin + '/';
+        
+        fetch('/api/line/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, redirectUri })
+        })
+        .then(res => res.json())
+        .then(async (data) => {
+           if (data.userId) {
+              const profileInfo = {
+                name: data.displayName,
+                pictureUrl: data.pictureUrl,
+                lineUserId: data.userId
+              };
+              const docRef = doc(db, 'users', user.uid, 'profile', 'info');
+              const snapshot = await getDoc(docRef);
+              if (!snapshot.exists()) {
+                await setDoc(docRef, {
+                  lineConnected: true,
+                  lineProfile: profileInfo,
+                  userId: user.uid,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                });
+              } else {
+                await setDoc(docRef, {
+                  lineConnected: true,
+                  lineProfile: profileInfo,
+                  updatedAt: serverTimestamp()
+                }, { merge: true });
+              }
+           }
+        })
+        .catch(console.error);
+
+        // Remove query params
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => setActiveTab('settings'), 0);
+      }
+    }
 
     const pointsRef = collection(db, 'users', user.uid, 'points');
     const unsubPoints = onSnapshot(pointsRef, (snapshot) => {
@@ -329,7 +380,7 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
     if (type === 'group') {
       // Move to folder
       try {
-        await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: targetId, updatedAt: Timestamp.now() }, { merge: true });
+        await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: targetId, updatedAt: serverTimestamp() }, { merge: true });
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `points/${sourceId}`);
       }
@@ -347,7 +398,7 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
               await setDoc(doc(db, 'users', user.uid, 'points', targetId), {
                 balance: target.balance + source.balance,
                 expiring: target.expiring + source.expiring,
-                updatedAt: Timestamp.now()
+                updatedAt: serverTimestamp()
               }, { merge: true });
               // Delete source
               await deleteDoc(doc(db, 'users', user.uid, 'points', sourceId));
@@ -364,11 +415,11 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
               await setDoc(doc(db, 'users', user.uid, 'groups', newGroupId), {
                 name: groupName,
                 userId: user.uid,
-                createdAt: Timestamp.now(),
-                updatedAt: Timestamp.now()
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
               });
-              await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: newGroupId, updatedAt: Timestamp.now() }, { merge: true });
-              await setDoc(doc(db, 'users', user.uid, 'points', targetId), { groupId: newGroupId, updatedAt: Timestamp.now() }, { merge: true });
+              await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: newGroupId, updatedAt: serverTimestamp() }, { merge: true });
+              await setDoc(doc(db, 'users', user.uid, 'points', targetId), { groupId: newGroupId, updatedAt: serverTimestamp() }, { merge: true });
             } catch (err) {
               handleFirestoreError(err, OperationType.CREATE, `groups/${newGroupId}`);
             }
@@ -391,7 +442,7 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
       // Reset points in this group
       const groupPoints = points.filter(p => p.groupId === groupId);
       for (const p of groupPoints) {
-        await setDoc(doc(db, 'users', user.uid, 'points', p.id), { groupId: null, updatedAt: Timestamp.now() }, { merge: true });
+        await setDoc(doc(db, 'users', user.uid, 'points', p.id), { groupId: null, updatedAt: serverTimestamp() }, { merge: true });
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `groups/${groupId}`);
@@ -404,8 +455,8 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
       const data = {
         ...p,
         userId: user.uid,
-        updatedAt: Timestamp.now(),
-        createdAt: isNew ? Timestamp.now() : (points.find(x => x.id === p.id)?.createdAt as any || Timestamp.now())
+        updatedAt: serverTimestamp(),
+        createdAt: isNew ? serverTimestamp() : (points.find(x => x.id === p.id)?.createdAt as any || serverTimestamp())
       };
       await setDoc(doc(db, 'users', user.uid, 'points', p.id), data);
       setIsAddingMode(false);
@@ -755,12 +806,15 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
       const confirmDisconnect = window.confirm('確定要解除綁定 LINE 帳號嗎？您將不會再收到點數到期通知。');
       if (confirmDisconnect) {
         try {
-          await setDoc(doc(db, 'users', user.uid, 'profile', 'info'), {
-            lineConnected: false,
-            lineProfile: null,
-            userId: user.uid,
-            updatedAt: Timestamp.now()
-          }, { merge: true });
+          const docRef = doc(db, 'users', user.uid, 'profile', 'info');
+          const snapshot = await getDoc(docRef);
+          if (snapshot.exists()) {
+            await setDoc(docRef, {
+              lineConnected: false,
+              lineProfile: null,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
         } catch (err) {
           handleFirestoreError(err, OperationType.UPDATE, 'profile/info');
         }
@@ -768,33 +822,16 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
       return;
     }
     
-    // 模擬 LINE 登入 OAuth 流程
+    // 真實 LINE 登入 OAuth 流程
     setIsLoggingIn(true);
-    setTimeout(async () => {
-      try {
-        const profileInfo = {
-          name: 'LINE 用戶 (GD牌)',
-          pictureUrl: 'https://picsum.photos/id/64/200/200'
-        };
-        const docRef = doc(db, 'users', user.uid, 'profile', 'info');
-        const snapshot = await getDoc(docRef);
-        const payload: any = {
-          lineConnected: true,
-          lineProfile: profileInfo,
-          userId: user.uid,
-          updatedAt: Timestamp.now(),
-        };
-        if (!snapshot.exists()) {
-            payload.createdAt = Timestamp.now();
-        }
-        await setDoc(docRef, payload, { merge: true });
-        setIsLoggingIn(false);
-      } catch(err) {
-        setIsLoggingIn(false);
-        handleFirestoreError(err, OperationType.UPDATE, 'profile/info');
-      }
-    }, 1500);
+    const clientId = process.env.NEXT_PUBLIC_LINE_CHANNEL_ID || '2009904980';
+    const redirectUri = window.location.origin + '/'; // Using the root path as redirect uri
+    const state = user.uid;
+    const url = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid&bot_prompt=aggressive`;
+    window.sessionStorage.setItem('line_oauth_state', state);
+    window.location.href = url;
   };
+
 
   return (
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 max-w-2xl">
