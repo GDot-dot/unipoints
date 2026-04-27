@@ -860,25 +860,61 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
             </div>
           </div>
           
-          <button
-            onClick={handleLineConnect}
-            disabled={isLoggingIn}
-            className={clsx(
-              "relative inline-flex items-center justify-center h-12 px-6 rounded-xl font-bold transition-all duration-300 focus:outline-none",
-              lineConnected 
-                ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
-                : 'bg-[#06C755] text-white hover:bg-[#05b34c] shadow-lg shadow-[#06C755]/30 group-hover:scale-105',
-              isLoggingIn && 'opacity-70 cursor-not-allowed'
+          <div className="flex flex-col space-y-2">
+            <button
+              onClick={handleLineConnect}
+              disabled={isLoggingIn}
+              className={clsx(
+                "relative inline-flex items-center justify-center h-12 px-6 rounded-xl font-bold transition-all duration-300 focus:outline-none",
+                lineConnected 
+                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
+                  : 'bg-[#06C755] text-white hover:bg-[#05b34c] shadow-lg shadow-[#06C755]/30 group-hover:scale-105',
+                isLoggingIn && 'opacity-70 cursor-not-allowed'
+              )}
+            >
+              {isLoggingIn ? (
+                 <span className="flex items-center"><div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"/> 登入中...</span>
+              ) : lineConnected ? (
+                 '解除綁定'
+              ) : (
+                 '登入 LINE 綁定'
+              )}
+            </button>
+            
+            {lineConnected && (
+              <button
+                onClick={async () => {
+                  const btn = document.getElementById('test-push-btn');
+                  const originalText = btn ? btn.innerText : '';
+                  if (btn) btn.innerText = '發送中...';
+                  try {
+                    const res = await fetch('/api/line/notify', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        userId: lineProfile.userId,
+                        message: `🔔 測試通知成功！\n您有點數即將到期，請記得查看 UniPoints！\n您的 LINE ID: ${lineProfile.userId.slice(0, 8)}...`
+                      })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      alert('✅ 測試通知已發送，請檢查 LINE！');
+                    } else {
+                      alert(`❌ 發送失敗: ${data.error || '未知錯誤'}\n請確保已在環境變數中設定 LINE_CHANNEL_ACCESS_TOKEN`);
+                    }
+                  } catch (e) {
+                    alert('❌ 發生異常，請確認環境變數設定。');
+                  } finally {
+                    if (btn) btn.innerText = originalText;
+                  }
+                }}
+                id="test-push-btn"
+                className="text-[10px] font-bold text-blue-500 hover:underline text-center"
+              >
+                發送測試通知
+              </button>
             )}
-          >
-            {isLoggingIn ? (
-               <span className="flex items-center"><div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"/> 登入中...</span>
-            ) : lineConnected ? (
-               '解除綁定'
-            ) : (
-               '登入 LINE 綁定'
-            )}
-          </button>
+          </div>
         </div>
         
         <AnimatePresence>
