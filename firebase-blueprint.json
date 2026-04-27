@@ -11,6 +11,7 @@
         "balance": { "type": "number" },
         "expiring": { "type": "number" },
         "expireDate": { "type": ["string", "null"] },
+        "reminderDays": { "type": ["number", "string", "null"] },
         "color": { "type": "string" },
         "iconName": { "type": "string" },
         "groupId": { "type": ["string", "null"] },
@@ -44,7 +45,8 @@
           "type": ["object", "null"],
           "properties": {
             "name": { "type": "string" },
-            "pictureUrl": { "type": "string" }
+            "pictureUrl": { "type": "string" },
+            "lineUserId": { "type": "string" }
           }
         },
         "userId": { "type": "string" },

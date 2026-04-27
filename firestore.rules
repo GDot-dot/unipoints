@@ -41,14 +41,11 @@ service cloud.firestore {
                     (!('updatedAt' in data) || (data.updatedAt is timestamp));
                     
       let expireDateOk = !('expireDate' in data) || data.expireDate == null || (data.expireDate is string && data.expireDate.size() <= 20);
+      let reminderDaysOk = !('reminderDays' in data) || data.reminderDays == null || (data.reminderDays is number) || (data.reminderDays is string && data.reminderDays.size() <= 20);
       let groupIdOk = !('groupId' in data) || data.groupId == null || (data.groupId is string && data.groupId.size() <= 128);
       let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
 
-      // Check if there are no shadow fields (allowed keys)
-      let allowedKeys = ['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'userId', 'createdAt', 'updatedAt', 'id'];
-      let noExtraKeys = data.keys().hasOnly(allowedKeys);
-
-      return typesOk && expireDateOk && groupIdOk && idOk && noExtraKeys;
+      return typesOk && expireDateOk && reminderDaysOk && groupIdOk && idOk;
     }
 
     function isValidGroup(data, userId) {
@@ -58,10 +55,8 @@ service cloud.firestore {
                     (!('updatedAt' in data) || (data.updatedAt is timestamp));
       
       let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
-      let allowedKeys = ['name', 'userId', 'createdAt', 'updatedAt', 'id'];
-      let noExtraKeys = data.keys().hasOnly(allowedKeys);
                     
-      return typesOk && idOk && noExtraKeys;
+      return typesOk && idOk;
     }
 
     function isValidProfile(data, userId) {
@@ -72,16 +67,15 @@ service cloud.firestore {
                     
       let lineProfileOk = !('lineProfile' in data) || data.lineProfile == null || (
         data.lineProfile is map && 
-        data.lineProfile.keys().hasAll(['name', 'pictureUrl']) && 
+        data.lineProfile.keys().hasAll(['name', 'pictureUrl', 'lineUserId']) && 
         data.lineProfile.name is string && data.lineProfile.name.size() <= 100 &&
-        data.lineProfile.pictureUrl is string && data.lineProfile.pictureUrl.size() <= 500
+        data.lineProfile.pictureUrl is string && data.lineProfile.pictureUrl.size() <= 500 &&
+        data.lineProfile.lineUserId is string && data.lineProfile.lineUserId.size() <= 128
       );
 
       let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
-      let allowedKeys = ['lineConnected', 'lineProfile', 'userId', 'createdAt', 'updatedAt', 'id'];
-      let noExtraKeys = data.keys().hasOnly(allowedKeys);
 
-      return typesOk && lineProfileOk && idOk && noExtraKeys;
+      return typesOk && lineProfileOk && idOk;
     }
 
     // Match users
