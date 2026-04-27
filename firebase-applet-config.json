@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0518432758",
-  "appId": "1:797382006430:web:08bf7ab2e41b03170c0d8f",
-  "apiKey": "AIzaSyBDTC3JogX7NqiM2HmlgWBOG8LGAY62yCE",
-  "authDomain": "gen-lang-client-0518432758.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-8facac53-0615-4050-996c-69dfdd09762a",
-  "storageBucket": "gen-lang-client-0518432758.firebasestorage.app",
-  "messagingSenderId": "797382006430",
-  "measurementId": ""
+  "apiKey": "AIzaSyCUK0llPeKNyapCI02OrXNIrr0HZk0BpYQ",
+  "authDomain": "unpoints.firebaseapp.com",
+  "projectId": "unpoints",
+  "storageBucket": "unpoints.firebasestorage.app",
+  "messagingSenderId": "673797174184",
+  "appId": "1:673797174184:web:7ca068157e60130fdfa39d",
+  "measurementId": "G-M840PH1XRJ",
+  "firestoreDatabaseId": "(default)"
 }
