@@ -824,7 +824,12 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
     
     // 真實 LINE 登入 OAuth 流程
     setIsLoggingIn(true);
-    const clientId = process.env.NEXT_PUBLIC_LINE_CHANNEL_ID || '2009904980';
+    const clientId = process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID;
+    if (!clientId) {
+      alert('⚠️ 系統尚未設定 LINE Login Channel ID，請在設定或環境變數中填寫 NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID！');
+      setIsLoggingIn(false);
+      return;
+    }
     const redirectUri = window.location.origin + '/'; // Using the root path as redirect uri
     const state = user.uid;
     const url = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid&bot_prompt=aggressive`;

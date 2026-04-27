@@ -4,8 +4,8 @@ export async function POST(req: Request) {
   try {
     const { code, redirectUri } = await req.json();
 
-    const clientId = process.env.NEXT_PUBLIC_LINE_CHANNEL_ID || '2009904980';
-    const clientSecret = process.env.LINE_CHANNEL_SECRET || '632cd5648415c0edf90b545718ee788d'; // or '7aa0789dbe6e484cceec8ef80e5b8c81'
+    const clientId = process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID;
+    const clientSecret = process.env.LINE_LOGIN_CHANNEL_SECRET;
 
     if (!clientId || !clientSecret) {
       return NextResponse.json({ error: 'LINE credentials missing from server' }, { status: 500 });
@@ -15,9 +15,8 @@ export async function POST(req: Request) {
     params.append('grant_type', 'authorization_code');
     params.append('code', code);
     params.append('redirect_uri', redirectUri);
-    // 這裡我們直接使用使用者輸入的 LINE Login Channel ID 和 Secret
-    params.append('client_id', '2009904980'); 
-    params.append('client_secret', '7aa0789dbe6e484cceec8ef80e5b8c81'); 
+    params.append('client_id', clientId); 
+    params.append('client_secret', clientSecret); 
 
     const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
       method: 'POST',
