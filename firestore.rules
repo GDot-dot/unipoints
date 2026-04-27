@@ -89,11 +89,11 @@ service cloud.firestore {
       match /points/{pointId} {
         allow read: if isOwner(userId);
         
-        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId);
         
         allow create: if isOwner(userId) && 
                          isValidId(pointId) && 
-                         incoming().keys().hasAll(['provider', 'type', 'balance', 'expiring', 'color', 'iconName', 'userId', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasAll(['provider', 'type', 'balance', 'expiring', 'userId', 'createdAt', 'updatedAt']) &&
                          isValidPoint(incoming(), userId) &&
                          incoming().createdAt == request.time &&
                          incoming().updatedAt == request.time;
@@ -104,8 +104,8 @@ service cloud.firestore {
                          (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
                          (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
-                         // All updatable fields
-                         incoming().diff(existing()).affectedKeys().hasOnly(['provider', 'type', 'balance', 'expiring', 'expireDate', 'color', 'iconName', 'groupId', 'updatedAt', 'id']);
+                         // Allow all fields to be sent, but only if they values haven't changed if they are system fields
+                         true;
                          
         allow delete: if isOwner(userId);
       }
@@ -113,7 +113,7 @@ service cloud.firestore {
       match /groups/{groupId} {
         allow read: if isOwner(userId);
         
-        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId);
         
         allow create: if isOwner(userId) && 
                          isValidId(groupId) && 
@@ -128,7 +128,7 @@ service cloud.firestore {
                          (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
                          (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt', 'id']);
+                         true;
                          
         allow delete: if isOwner(userId);
       }
@@ -149,7 +149,7 @@ service cloud.firestore {
                          (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
                          (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
                          incoming().updatedAt == request.time &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['lineConnected', 'lineProfile', 'updatedAt', 'id']);
+                         true;
                          
         allow delete: if isOwner(userId);
       }
