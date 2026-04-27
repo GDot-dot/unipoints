@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { motion, AnimatePresence, Reorder, useDragControls } from 'motion/react';
 import { 
   Home, 
   ListTodo, 
@@ -964,9 +964,104 @@ function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: P
   )
 }
 
+function ActivityItem({ item, onEdit, onDelete, activeItemId, setActiveItemId, confirmDeleteId, setConfirmDeleteId }: { item: Activity, onEdit: (a: Activity) => void, onDelete: (id: string) => void, activeItemId: string | null, setActiveItemId: (id: string | null) => void, confirmDeleteId: string | null, setConfirmDeleteId: (id: string | null) => void }) {
+  const controls = useDragControls();
+  const isActive = activeItemId === item.id;
+  const isConfirmingDelete = confirmDeleteId === item.id;
+
+  return (
+    <Reorder.Item
+      key={item.id}
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      initial={false}
+      whileDrag={{ 
+        scale: 1.02, 
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+        zIndex: 50 
+      }}
+      onClick={() => setActiveItemId(isActive ? null : item.id)}
+      className={clsx(
+        "bg-white p-5 rounded-3xl shadow-sm border flex flex-col md:flex-row md:items-center justify-between transition-all group relative overflow-hidden",
+        isActive ? "ring-2 ring-blue-500 border-transparent bg-blue-50/10" : "border-gray-100 hover:shadow-md"
+      )}
+      transition={{ type: "spring", stiffness: 400, damping: 40 }}
+    >
+      <div className="flex items-center space-x-4 mb-4 md:mb-0 flex-1">
+        <div 
+          onPointerDown={(e) => controls.start(e)}
+          className="p-3 bg-gray-50 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-grab active:cursor-grabbing"
+        >
+          <div className="grid grid-cols-2 gap-1 px-0.5">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="w-1 h-1 bg-current rounded-full" />
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 cursor-pointer">
+          <div className="flex items-center space-x-2 mb-1">
+             <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-black tracking-widest uppercase">{item.tag}</span>
+             <span className="text-xs text-gray-400 font-bold">{item.provider}</span>
+          </div>
+          <h4 className="font-bold text-gray-900 text-lg">{item.title}</h4>
+        </div>
+      </div>
+      
+      <div className="flex items-center justify-end space-x-3">
+          <AnimatePresence mode="wait">
+            {isActive && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors"
+                title="編輯"
+              >
+                <Edit2 className="w-4 h-4" />
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          <span className="font-black text-gray-900 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 min-w-[100px] text-center">
+            {item.cost}
+          </span>
+          
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isConfirmingDelete) {
+                onDelete(item.id);
+                setConfirmDeleteId(null);
+              } else {
+                setConfirmDeleteId(item.id);
+                setTimeout(() => setConfirmDeleteId(null), 3000);
+              }
+            }}
+            className={clsx(
+              "h-10 px-3 rounded-xl transition-all font-bold text-xs flex items-center justify-center space-x-2",
+              isConfirmingDelete 
+                ? "bg-red-500 text-white w-24" 
+                : "text-gray-300 hover:text-red-500 hover:bg-red-50 w-10"
+            )}
+          >
+            {isConfirmingDelete ? (
+              <><span>確定刪除?</span></>
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </button>
+      </div>
+    </Reorder.Item>
+  );
+}
+
 function ActivitiesTab({ activities, user }: { activities: Activity[], user: any }) {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleSaveActivity = async (a: Activity) => {
     try {
@@ -980,19 +1075,18 @@ function ActivitiesTab({ activities, user }: { activities: Activity[], user: any
   };
 
   const handleDeleteActivity = async (id: string) => {
-    if (window.confirm('確定要刪除此願望活動嗎？')) {
-      try {
-        await deleteDoc(doc(db, 'users', user.uid, 'activities', id));
-        setEditingActivity(null);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/activities/${id}`);
-      }
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'activities', id));
+      setEditingActivity(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/activities/${id}`);
     }
   };
 
   const setActivities = async (newActivities: Activity[]) => {
-    // Reorder logic: potentially update sort order in firestore if implemented
-    // For now, we trust the onSnapshot to keep UI sync
+    // Reorder logic: if we had a sortOrder field, we would update it here
+    // For now we just allow the local UI to move, but without a sortOrder field in DB, 
+    // it will return to default on next snapshot.
   };
 
   return (
@@ -1000,7 +1094,7 @@ function ActivitiesTab({ activities, user }: { activities: Activity[], user: any
       <div className="p-6 md:px-0 flex-shrink-0 flex justify-between items-end">
         <div>
            <h1 className="text-3xl font-black text-gray-900">兌換願望與活動清單</h1>
-           <p className="text-gray-500 text-sm mt-2 font-medium">上下拖曳卡片來安排兌換的優先順序</p>
+           <p className="text-gray-500 text-sm mt-2 font-medium">點擊清單可進行編輯，按住左側圖示可拖曳排序</p>
         </div>
         <button 
           onClick={() => setIsAddingMode(true)}
@@ -1013,46 +1107,16 @@ function ActivitiesTab({ activities, user }: { activities: Activity[], user: any
       <div className="p-6 md:px-0 flex-1 overflow-y-auto scrollbar-hide pb-24 md:pb-10 max-w-3xl">
         <Reorder.Group axis="y" values={activities} onReorder={setActivities} className="space-y-4">
           {activities.map((item) => (
-            <Reorder.Item
-              key={item.id}
-              value={item}
-              initial={false}
-              onClick={() => setEditingActivity(item)}
-              whileDrag={{ 
-                scale: 1.02, 
-                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-                zIndex: 50 
-              }}
-              className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow group relative overflow-hidden"
-              transition={{ type: "spring", stiffness: 400, damping: 40 }}
-            >
-              <div className="flex items-center space-x-4 mb-4 md:mb-0">
-                <div className="p-3 bg-gray-50 rounded-xl text-gray-400 group-hover:text-gray-900 group-hover:bg-gray-100 transition-colors">
-                  <GripVertical className="w-5 h-5" />
-                </div>
-                <div className="cursor-pointer">
-                  <div className="flex items-center space-x-2 mb-1">
-                     <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-black tracking-widest uppercase">{item.tag}</span>
-                     <span className="text-xs text-gray-400 font-bold">{item.provider}</span>
-                  </div>
-                  <h4 className="font-bold text-gray-900 text-lg">{item.title}</h4>
-                </div>
-              </div>
-              <div className="flex items-center justify-end w-full md:w-auto ml-14 md:ml-0 space-x-3">
-                  <span className="font-black text-gray-900 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 flex items-center transition-colors group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-600">
-                    {item.cost}
-                  </span>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteActivity(item.id);
-                    }}
-                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-              </div>
-            </Reorder.Item>
+            <ActivityItem 
+              key={item.id} 
+              item={item} 
+              onEdit={setEditingActivity}
+              onDelete={handleDeleteActivity}
+              activeItemId={activeItemId}
+              setActiveItemId={setActiveItemId}
+              confirmDeleteId={confirmDeleteId}
+              setConfirmDeleteId={setConfirmDeleteId}
+            />
           ))}
         </Reorder.Group>
         
@@ -1233,9 +1297,6 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
             userId: user.uid
           });
           successCount++;
-        } else {
-          alert(`❌ 發送失敗 (${point.provider}): ${data.details?.message || data.error}\n請確認 LINE_CHANNEL_ACCESS_TOKEN 是否正確。`);
-          return; // Stop early if auth fails
         }
       }
       alert(`✅ 模擬任務完成！已發送 ${successCount} 則 LINE 通知。`);
@@ -1354,7 +1415,7 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
                       });
                       alert('✅ 測試通知已發送，請檢查 LINE！');
                     } else {
-                      alert(`❌ 發送失敗: ${data.details?.message || data.error || '未知錯誤'}\n\n請檢查：\n1. 環境變數 LINE_CHANNEL_ACCESS_TOKEN 是否正確 (應為 Messaging API 的長效 Token)\n2. 確保沒有包含多餘的空格或換行`);
+                      alert(`❌ 發送失敗: ${data.error || '未知錯誤'}\n請確保已在環境變數中設定 LINE_CHANNEL_ACCESS_TOKEN`);
                     }
                   } catch (e) {
                     alert('❌ 發生異常，請確認環境變數設定。');

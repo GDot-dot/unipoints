@@ -8,7 +8,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing userId or message' }, { status: 400 });
     }
 
-    const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+    const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
     if (!accessToken) {
       return NextResponse.json({ error: 'LINE_CHANNEL_ACCESS_TOKEN not configured on server' }, { status: 500 });
     }
