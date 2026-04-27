@@ -45,7 +45,7 @@ type Point = {
   balance: number;
   expiring: number;
   expireDate: string | null; // YYYY-MM-DD or null for infinite
-  reminderDays: number | string | null; // null for no reminder or a specific date string / fixed days count
+  reminderDays: (number | string)[]; // array for multi-select (number of days or date string)
   color: string;
   iconName: string;
   groupId: string | null;
@@ -62,16 +62,36 @@ type PointGroup = {
   userId?: string;
 };
 
+type Activity = {
+  id: string;
+  title: string;
+  cost: string;
+  provider: string;
+  tag: string;
+  description?: string;
+  userId?: string;
+};
+
+type Notification = {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  isUnread: boolean;
+  link?: string;
+  userId?: string;
+};
+
 const ICON_MAP: Record<string, React.ElementType> = {
   Building, CreditCard, Store, Ticket, Coffee, ShoppingBag
 };
 
 const INITIAL_POINTS: Point[] = [
-  { id: '1', provider: '國泰世華', type: '小樹點', balance: 1250, expiring: 50, expireDate: '2026-05-01', reminderDays: 7, color: 'bg-emerald-500', iconName: 'Building', groupId: null },
-  { id: '2', provider: '台新銀行', type: 'Point', balance: 800, expiring: 0, expireDate: null, reminderDays: null, color: 'bg-red-500', iconName: 'CreditCard', groupId: null },
-  { id: '3', provider: 'OPENPOINT', type: '點數', balance: 350, expiring: 20, expireDate: '2026-04-30', reminderDays: 3, color: 'bg-orange-500', iconName: 'Store', groupId: null },
-  { id: '4', provider: '全家便利商店', type: 'Fa點', balance: 12000, expiring: 0, expireDate: null, reminderDays: null, color: 'bg-blue-500', iconName: 'Store', groupId: null },
-  { id: '5', provider: '威秀影城', type: 'iShow點', balance: 4, expiring: 1, expireDate: '2026-05-15', reminderDays: 30, color: 'bg-purple-600', iconName: 'Ticket', groupId: null },
+  { id: '1', provider: '國泰世華', type: '小樹點', balance: 1250, expiring: 50, expireDate: '2026-05-01', reminderDays: [7], color: 'bg-emerald-500', iconName: 'Building', groupId: null },
+  { id: '2', provider: '台新銀行', type: 'Point', balance: 800, expiring: 0, expireDate: null, reminderDays: [], color: 'bg-red-500', iconName: 'CreditCard', groupId: null },
+  { id: '3', provider: 'OPENPOINT', type: '點數', balance: 350, expiring: 20, expireDate: '2026-04-30', reminderDays: [3], color: 'bg-orange-500', iconName: 'Store', groupId: null },
+  { id: '4', provider: '全家便利商店', type: 'Fa點', balance: 12000, expiring: 0, expireDate: null, reminderDays: [], color: 'bg-blue-500', iconName: 'Store', groupId: null },
+  { id: '5', provider: '威秀影城', type: 'iShow點', balance: 4, expiring: 1, expireDate: '2026-05-15', reminderDays: [30], color: 'bg-purple-600', iconName: 'Ticket', groupId: null },
 ];
 
 const INITIAL_GROUPS: PointGroup[] = [
@@ -97,29 +117,47 @@ export default function UniPointsApp() {
   const [activeTab, setActiveTab] = useState('home');
   const [points, setPoints] = useState<Point[]>([]);
   const [groups, setGroups] = useState<PointGroup[]>([]);
-  const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lineConnected, setLineConnected] = useState(false);
   const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string, lineUserId: string} | null>(null);
 
-  // Dynamic notifications based on points
-  const dynamicNotifications = useMemo(() => {
-    const notes = [...NOTIFICATIONS]; // Start with system notes
+  const [simulateDateStr, setSimulateDateStr] = useState<string>('');
+
+  // Dynamic notifications based on points (client-side simulation for testing)
+  const simulatedNotifications = useMemo(() => {
+    const notes: Notification[] = [];
+    const today = simulateDateStr ? new Date(simulateDateStr) : new Date();
     
-    // Add point expiry notes
     points.forEach(p => {
       if (p.expiring > 0 && p.expireDate) {
-        notes.unshift({
-          id: `expiry-${p.id}`,
-          title: `點數到期通知: ${p.provider}`,
-          message: `您有 ${p.expiring} 點 ${p.type} 將於 ${p.expireDate} 到期。`,
-          time: '系統自動生成',
-          isUnread: true
+        const expiryDate = new Date(p.expireDate);
+        const diffDays = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Multi-select reminder check
+        const isReminderDue = Array.isArray(p.reminderDays) && p.reminderDays.some(rd => {
+          if (typeof rd === 'number') return rd === diffDays;
+          if (typeof rd === 'string') return rd === today.toISOString().split('T')[0];
+          return false;
         });
+
+        if (isReminderDue || (diffDays >= 0 && diffDays <= 7)) {
+          notes.push({
+            id: `expiry-${p.id}-${diffDays}-${today.getTime()}`,
+            title: `點數到期提醒: ${p.provider}`,
+            message: `您有 ${p.expiring} 點 ${p.type} 將於 ${diffDays} 天後 (${p.expireDate}) 到期。`,
+            time: today.toLocaleDateString(),
+            isUnread: true
+          });
+        }
       }
     });
     
-    return notes.slice(0, 5); // Only show top 5
-  }, [points]);
+    return notes;
+  }, [points, simulateDateStr]);
+
+  const allNotifications = useMemo(() => [...simulatedNotifications, ...notifications].slice(0, 20), [simulatedNotifications, notifications]);
+  const unreadCount = allNotifications.filter(n => n.isUnread).length;
 
   useEffect(() => {
     if (!user) return; // user will load eventually
@@ -175,18 +213,39 @@ export default function UniPointsApp() {
       }
     }
 
+    const activitiesRef = collection(db, 'users', user.uid, 'activities');
+    const unsubActivities = onSnapshot(activitiesRef, (snapshot) => {
+      if (snapshot.empty && activities.length === 0) {
+        setActivities(INITIAL_ACTIVITIES as Activity[]);
+      } else {
+        const a = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Activity));
+        setActivities(a);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/activities`);
+    });
+
+    const notificationsRef = collection(db, 'users', user.uid, 'notifications');
+    const unsubNotifications = onSnapshot(notificationsRef, (snapshot) => {
+      const n = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Notification));
+      setNotifications(n.sort((a, b) => b.id.localeCompare(a.id)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/notifications`);
+    });
+
     const pointsRef = collection(db, 'users', user.uid, 'points');
     const unsubPoints = onSnapshot(pointsRef, (snapshot) => {
       const p = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           ...data,
-          id: doc.id
+          id: doc.id,
+          reminderDays: Array.isArray(data.reminderDays) ? data.reminderDays : (data.reminderDays ? [data.reminderDays] : [])
         } as Point;
       });
       setPoints(p);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'points');
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/points`);
     });
 
     const groupsRef = collection(db, 'users', user.uid, 'groups');
@@ -200,7 +259,7 @@ export default function UniPointsApp() {
       });
       setGroups(g);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'groups');
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/groups`);
     });
 
     const profileRef = doc(db, 'users', user.uid, 'profile', 'info');
@@ -211,10 +270,12 @@ export default function UniPointsApp() {
         setLineProfile(data.lineProfile || null);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'profile');
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/profile/info`);
     });
 
     return () => {
+      unsubActivities();
+      unsubNotifications();
       unsubPoints();
       unsubGroups();
       unsubProfile();
@@ -245,8 +306,6 @@ export default function UniPointsApp() {
       </div>
     );
   }
-
-  const unreadCount = NOTIFICATIONS.filter(n => n.isUnread).length;
 
   const NAV_ITEMS = [
     { id: 'home', icon: Wallet, label: '跨界錢包' },
@@ -309,9 +368,9 @@ export default function UniPointsApp() {
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
           {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} />}
-          {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} setActivities={setActivities} />}
-          {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={dynamicNotifications} />}
-          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} />}
+          {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} user={user} />}
+          {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={allNotifications} user={user} setNotifications={setNotifications} />}
+          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} />}
         </AnimatePresence>
       </main>
 
@@ -405,7 +464,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
       try {
         await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: targetId, updatedAt: serverTimestamp() }, { merge: true });
       } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `points/${sourceId}`);
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/points/${sourceId}`);
       }
     } else if (type === 'point') {
       const source = points.find(p => p.id === sourceId);
@@ -426,7 +485,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
               // Delete source
               await deleteDoc(doc(db, 'users', user.uid, 'points', sourceId));
             } catch (err) {
-              handleFirestoreError(err, OperationType.UPDATE, `points/merge`);
+              handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/points/${targetId}/merge`);
             }
           }
         } else {
@@ -444,7 +503,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
               await setDoc(doc(db, 'users', user.uid, 'points', sourceId), { groupId: newGroupId, updatedAt: serverTimestamp() }, { merge: true });
               await setDoc(doc(db, 'users', user.uid, 'points', targetId), { groupId: newGroupId, updatedAt: serverTimestamp() }, { merge: true });
             } catch (err) {
-              handleFirestoreError(err, OperationType.CREATE, `groups/${newGroupId}`);
+              handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}/groups/${newGroupId}`);
             }
           }
         }
@@ -468,7 +527,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
         await setDoc(doc(db, 'users', user.uid, 'points', p.id), { groupId: null, updatedAt: serverTimestamp() }, { merge: true });
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `groups/${groupId}`);
+      handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/groups/${groupId}`);
     }
   };
 
@@ -485,7 +544,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
       setIsAddingMode(false);
       setEditingPoint(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `points/${p.id}`);
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/points/${p.id}`);
     }
   };
 
@@ -494,7 +553,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
       await deleteDoc(doc(db, 'users', user.uid, 'points', id));
       setEditingPoint(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `points/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/points/${id}`);
     }
   };
 
@@ -602,6 +661,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
                       isDragging={draggedId === point.id}
                       lineConnected={lineConnected}
                       lineProfile={lineProfile}
+                      user={user}
                     />
                   ))}
                   {groupPoints.length === 0 && isHovered && (
@@ -637,6 +697,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
                    isDragging={draggedId === point.id}
                    lineConnected={lineConnected}
                    lineProfile={lineProfile}
+                   user={user}
                  />
                </div>
              );
@@ -654,7 +715,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
   )
 }
 
-function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any }) {
+function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile, user }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any, user: any }) {
   const Icon = ICON_MAP[point.iconName] || Store;
   const isInfinite = point.expireDate === null;
 
@@ -663,16 +724,28 @@ function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, line
     if (!lineConnected || !lineProfile) return;
 
     try {
+      const messageText = `🔔 UniPoints 到期通知\n點數通路: ${point.provider}\n點數類型: ${point.type}\n即將到期: ${point.expiring} 點\n到期日期: ${point.expireDate}\n\n請記得於到期前進行消費或兌換唷！`;
+      
       const res = await fetch('/api/line/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: lineProfile.lineUserId,
-          message: `🔔 UniPoints 到期通知\n點數通路: ${point.provider}\n點數類型: ${point.type}\n即將到期: ${point.expiring} 點\n到期日期: ${point.expireDate}\n\n請記得於到期前進行消費或兌換唷！`
+          message: messageText
         })
       });
       const data = await res.json();
       if (data.success) {
+        // Sync with in-app notifications
+        const noteId = `n-${crypto.randomUUID()}`;
+        await setDoc(doc(db, 'users', user.uid, 'notifications', noteId), {
+          id: noteId,
+          title: '已發送 LINE 提醒',
+          message: `${point.provider} 的到期提醒已成功發送至您的 LINE。`,
+          time: '現在',
+          isUnread: true,
+          userId: user.uid
+        });
         alert('✅ 通知已發送至您的 LINE！');
       } else {
         alert(`❌ 發送失敗: ${data.error || '未知錯誤'}`);
@@ -730,22 +803,30 @@ function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, line
 
 function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: Point, isNew?: boolean, onClose: () => void, onSave: (p: Point) => void, onDelete: (id: string) => void }) {
   const [formData, setFormData] = useState<Point>(() => point || {
-    id: `p-${crypto.randomUUID()}`, provider: '', type: '', balance: 0, expiring: 0, expireDate: null, reminderDays: 7, color: 'bg-gray-800', iconName: 'Store', groupId: null
+    id: `p-${crypto.randomUUID()}`, provider: '', type: '', balance: 0, expiring: 0, expireDate: null, reminderDays: [7], color: 'bg-gray-800', iconName: 'Store', groupId: null
   });
   const [isInfinite, setIsInfinite] = useState(() => !point?.expireDate && !isNew);
   const [balanceInput, setBalanceInput] = useState(point && point.balance !== 0 ? String(point.balance) : '');
   const [expiringInput, setExpiringInput] = useState(point && point.expiring !== 0 ? String(point.expiring) : '');
-  const [customReminderDate, setCustomReminderDate] = useState(() => (typeof point?.reminderDays === 'string' && point.reminderDays.includes('-')) ? point.reminderDays : '');
+  const [customDateInput, setCustomDateInput] = useState('');
 
   const reminderOptions = [
-    { label: '不提醒', value: null },
     { label: '30天前', value: 30 },
     { label: '15天前', value: 15 },
     { label: '7天前', value: 7 },
     { label: '3天前', value: 3 },
     { label: '1天前', value: 1 },
-    { label: '指定日期', value: 'date' },
   ];
+
+  const toggleReminder = (val: number | string) => {
+    let newReminders = [...formData.reminderDays];
+    if (newReminders.includes(val)) {
+      newReminders = newReminders.filter(r => r !== val);
+    } else {
+      newReminders.push(val);
+    }
+    setFormData({...formData, reminderDays: newReminders});
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -790,7 +871,7 @@ function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: P
                <label className="flex items-center space-x-2 cursor-pointer">
                  <input type="checkbox" checked={isInfinite} onChange={(e) => {
                    setIsInfinite(e.target.checked);
-                   if (e.target.checked) setFormData({...formData, expireDate: null, expiring: 0, reminderDays: null});
+                   if (e.target.checked) setFormData({...formData, expireDate: null, expiring: 0, reminderDays: []});
                  }} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
                  <span className="text-sm font-semibold text-gray-600">無限期</span>
                </label>
@@ -818,18 +899,15 @@ function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: P
                 </div>
                 
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">LINE 提醒設定</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">LINE 提醒設定 (複選)</label>
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     {reminderOptions.map(opt => (
                       <button
                         key={String(opt.value)}
-                        onClick={() => {
-                          const val = opt.value === 'date' ? (customReminderDate || null) : opt.value;
-                          setFormData({...formData, reminderDays: val as any});
-                        }}
+                        onClick={() => toggleReminder(opt.value)}
                         className={clsx(
                           "px-2 py-2 rounded-lg text-[10px] font-bold border transition-all",
-                          ((formData.reminderDays === opt.value) || (opt.value === 'date' && typeof formData.reminderDays === 'string' && formData.reminderDays.includes('-'))) 
+                          formData.reminderDays.includes(opt.value)
                             ? "bg-blue-600 border-blue-600 text-white" 
                             : "bg-white border-gray-200 text-gray-500 hover:border-blue-200 hover:text-blue-500"
                         )}
@@ -837,21 +915,34 @@ function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: P
                         {opt.label}
                       </button>
                     ))}
+                    <div className="col-span-3 flex items-center mt-2 space-x-2">
+                       <input 
+                         type="date" 
+                         value={customDateInput} 
+                         onChange={e => setCustomDateInput(e.target.value)}
+                         className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 outline-none" 
+                       />
+                       <button 
+                         onClick={() => {
+                           if (customDateInput) {
+                             toggleReminder(customDateInput);
+                             setCustomDateInput('');
+                           }
+                         }}
+                         className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
+                        >
+                         <Plus className="w-4 h-4" />
+                       </button>
+                    </div>
                   </div>
-                  {(formData.reminderDays === 'date' || (typeof formData.reminderDays === 'string' && formData.reminderDays.includes('-'))) && (
-                    <motion.div initial={{opacity:0, y:-5}} animate={{opacity:1, y:0}}>
-                      <label className="text-[10px] font-bold text-gray-400 mb-1 block">請選擇指定日期</label>
-                      <input 
-                        type="date" 
-                        value={customReminderDate} 
-                        onChange={e => {
-                          setCustomReminderDate(e.target.value);
-                          setFormData({...formData, reminderDays: e.target.value});
-                        }} 
-                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500" 
-                      />
-                    </motion.div>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {formData.reminderDays.map(rd => (
+                      <span key={rd} className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-[10px] font-black uppercase tracking-tighter">
+                        {typeof rd === 'number' ? `${rd}天前` : rd}
+                        <button onClick={() => toggleReminder(rd)} className="ml-1 text-blue-400 hover:text-blue-600"><X className="w-2 h-2"/></button>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </>
             )}
@@ -873,11 +964,35 @@ function EditPointModal({ point, isNew, onClose, onSave, onDelete }: { point?: P
   )
 }
 
-function ActivitiesTab({ activities, setActivities }: { activities: any[], setActivities: any }) {
-  const handleDelete = (id: string) => {
-    if (window.confirm('確定要刪除此願望活動嗎？')) {
-      setActivities(activities.filter(a => a.id !== id));
+function ActivitiesTab({ activities, user }: { activities: Activity[], user: any }) {
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [isAddingMode, setIsAddingMode] = useState(false);
+
+  const handleSaveActivity = async (a: Activity) => {
+    try {
+      const data = { ...a, userId: user.uid };
+      await setDoc(doc(db, 'users', user.uid, 'activities', a.id), data);
+      setIsAddingMode(false);
+      setEditingActivity(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/activities/${a.id}`);
     }
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+    if (window.confirm('確定要刪除此願望活動嗎？')) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'activities', id));
+        setEditingActivity(null);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/activities/${id}`);
+      }
+    }
+  };
+
+  const setActivities = async (newActivities: Activity[]) => {
+    // Reorder logic: potentially update sort order in firestore if implemented
+    // For now, we trust the onSnapshot to keep UI sync
   };
 
   return (
@@ -888,18 +1003,7 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
            <p className="text-gray-500 text-sm mt-2 font-medium">上下拖曳卡片來安排兌換的優先順序</p>
         </div>
         <button 
-          onClick={() => {
-            const title = window.prompt('輸入願望名稱：');
-            if (title) {
-              setActivities([{
-                id: `a-${crypto.randomUUID()}`,
-                title,
-                cost: '待設定',
-                provider: '自訂',
-                tag: '新願望'
-              }, ...activities]);
-            }
-          }}
+          onClick={() => setIsAddingMode(true)}
           className="hidden md:flex h-10 px-4 bg-gray-900 text-white rounded-full items-center font-bold text-sm shadow-md hover:bg-gray-800 transition-colors"
         >
           <Plus className="w-4 h-4 mr-1.5" /> 新增目標
@@ -913,6 +1017,7 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
               key={item.id}
               value={item}
               initial={false}
+              onClick={() => setEditingActivity(item)}
               whileDrag={{ 
                 scale: 1.02, 
                 boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
@@ -925,7 +1030,7 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
                 <div className="p-3 bg-gray-50 rounded-xl text-gray-400 group-hover:text-gray-900 group-hover:bg-gray-100 transition-colors">
                   <GripVertical className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="cursor-pointer">
                   <div className="flex items-center space-x-2 mb-1">
                      <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-black tracking-widest uppercase">{item.tag}</span>
                      <span className="text-xs text-gray-400 font-bold">{item.provider}</span>
@@ -940,7 +1045,7 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(item.id);
+                      handleDeleteActivity(item.id);
                     }}
                     className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                   >
@@ -957,11 +1062,86 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
            </p>
         </div>
       </div>
+
+      <AnimatePresence>
+        {editingActivity && <EditActivityModal activity={editingActivity} onClose={() => setEditingActivity(null)} onSave={handleSaveActivity} onDelete={handleDeleteActivity} />}
+        {isAddingMode && <EditActivityModal isNew onClose={() => setIsAddingMode(false)} onSave={handleSaveActivity} onDelete={()=>{}} />}
+      </AnimatePresence>
     </div>
   )
 }
 
-function NotificationsTab({ notifications }: { notifications: any[] }) {
+function EditActivityModal({ activity, isNew, onClose, onSave, onDelete }: { activity?: Activity, isNew?: boolean, onClose: () => void, onSave: (a: Activity) => void, onDelete: (id: string) => void }) {
+  const [formData, setFormData] = useState<Activity>(() => activity || {
+    id: `a-${crypto.randomUUID()}`, title: '', cost: '', provider: '', tag: '推薦', description: ''
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose} className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" />
+      <motion.div 
+        initial={{opacity:0, scale:0.95, y:20}} animate={{opacity:1, scale:1, y:0}} exit={{opacity:0, scale:0.95, y:20}}
+        className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl relative z-10 max-h-[90dvh] overflow-y-auto"
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-black text-gray-900">{isNew ? '新增願望活動' : '編輯願望活動'}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"><X className="w-4 h-4"/></button>
+        </div>
+
+        <div className="space-y-5">
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">活動名稱</label>
+            <input type="text" value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：星巴克大杯買一送一" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">所需點數</label>
+              <input type="text" value={formData.cost} onChange={e=>setFormData({...formData, cost: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：100 小樹點" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">點數平台</label>
+              <input type="text" value={formData.provider} onChange={e=>setFormData({...formData, provider: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：國泰世華" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">標籤</label>
+            <input type="text" value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：熱烈推薦" />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">詳細說明</label>
+            <textarea value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none min-h-[100px]" placeholder="請在此填寫活動詳情、兌換連結等資訊..." />
+          </div>
+
+          <div className="flex space-x-3 pt-4">
+            {!isNew && (
+              <button onClick={() => onDelete(formData.id)} className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-colors">
+                <Trash2 className="w-5 h-5"/>
+              </button>
+            )}
+            <button onClick={() => onSave(formData)} disabled={!formData.title} className="flex-1 h-14 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center">
+              儲存願望 <ArrowRight className="w-4 h-4 ml-2"/>
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function NotificationsTab({ notifications, user, setNotifications }: { notifications: Notification[], user: any, setNotifications: React.Dispatch<React.SetStateAction<Notification[]>> }) {
+  const markAsRead = async (id: string) => {
+    if (id.startsWith('expiry-')) {
+      // For simulated notifications, just update local state if possible or ignore
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isUnread: false } : n));
+      return; 
+    }
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'notifications', id), { isUnread: false }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/notifications/${id}`);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 max-w-3xl">
       <div>
@@ -971,7 +1151,11 @@ function NotificationsTab({ notifications }: { notifications: any[] }) {
       
       <div className="space-y-4">
         {notifications.map((note) => (
-          <div key={note.id} className={clsx("p-6 rounded-3xl border transition-all relative overflow-hidden", note.isUnread ? "bg-blue-50/40 border-blue-100 shadow-sm" : "bg-white border-gray-100")}>
+          <div 
+            key={note.id} 
+            onClick={() => markAsRead(note.id)}
+            className={clsx("p-6 rounded-3xl border transition-all relative overflow-hidden cursor-pointer", note.isUnread ? "bg-blue-50/40 border-blue-100 shadow-sm" : "bg-white border-gray-100")}
+          >
             {note.isUnread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />}
             <div className="flex justify-between items-start mb-2">
               <h4 className={clsx("font-bold text-lg", note.isUnread ? "text-blue-900" : "text-gray-900")}>
@@ -995,7 +1179,7 @@ function NotificationsTab({ notifications }: { notifications: any[] }) {
   )
 }
 
-function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: boolean, lineProfile: any, user: any }) {
+function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSimulateDateStr }: { lineConnected: boolean, lineProfile: any, user: any, simulateDateStr: string, setSimulateDateStr: (s: string) => void }) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLineConnect = async () => {
@@ -1013,7 +1197,7 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
             }, { merge: true });
           }
         } catch (err) {
-          handleFirestoreError(err, OperationType.UPDATE, 'profile/info');
+          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/profile/info`);
         }
       }
       return;
@@ -1095,6 +1279,16 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
                     });
                     const data = await res.json();
                     if (data.success) {
+                      // Sync with in-app notifications
+                      const noteId = `n-${crypto.randomUUID()}`;
+                      await setDoc(doc(db, 'users', user.uid, 'notifications', noteId), {
+                        id: noteId,
+                        title: '測試通知已發送',
+                        message: '您的 LINE 測試通知已成功發送。',
+                        time: '現在',
+                        isUnread: true,
+                        userId: user.uid
+                      });
                       alert('✅ 測試通知已發送，請檢查 LINE！');
                     } else {
                       alert(`❌ 發送失敗: ${data.error || '未知錯誤'}\n請確保已在環境變數中設定 LINE_CHANNEL_ACCESS_TOKEN`);
@@ -1139,6 +1333,32 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center">
+            <span className="w-8 h-px bg-gray-200 mr-3"></span> 系統測試偵錯 (僅內部)
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-bold text-gray-700 block mb-2">模擬系統日期</label>
+            <div className="flex space-x-3">
+              <input 
+                type="date" 
+                value={simulateDateStr}
+                onChange={(e) => setSimulateDateStr(e.target.value)}
+                className="flex-1 bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <button 
+                onClick={() => setSimulateDateStr('')}
+                className="px-4 bg-gray-100 text-gray-500 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+              >
+                重設
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2 font-medium">調整日期以測試標籤顯示、點數到期通知之觸發邏輯。</p>
+          </div>
+        </div>
       </div>
     </div>
   )

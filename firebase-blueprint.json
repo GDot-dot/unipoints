@@ -54,6 +54,35 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["lineConnected", "userId", "createdAt", "updatedAt"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "User wish activities.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "cost": { "type": "string" },
+        "provider": { "type": "string" },
+        "tag": { "type": "string" },
+        "description": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["title", "cost", "provider", "userId"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System smart notifications.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "time": { "type": "string" },
+        "isUnread": { "type": "boolean" },
+        "userId": { "type": "string" }
+      },
+      "required": ["title", "message", "isUnread", "userId"]
     }
   },
   "firestore": {
@@ -68,6 +97,14 @@
     "/users/{userId}/profile/info": {
       "schema": { "$ref": "#/entities/Profile" },
       "description": "User's specific profile info and LINE integration."
+    },
+    "/users/{userId}/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "User's wish activities list."
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User's notification items."
     }
   }
 }

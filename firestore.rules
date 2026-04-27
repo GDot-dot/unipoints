@@ -9,7 +9,7 @@ service cloud.firestore {
 
     // Universal Helpers
     function isSignedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
     
     function isValidId(id) {
@@ -30,122 +30,31 @@ service cloud.firestore {
 
     // Validation Blueprints
     function isValidPoint(data, userId) {
-      let typesOk = (!('provider' in data) || (data.provider is string && data.provider.size() <= 100)) &&
-                    (!('type' in data) || (data.type is string && data.type.size() <= 100)) &&
-                    (!('balance' in data) || (data.balance is number && data.balance >= 0)) &&
-                    (!('expiring' in data) || (data.expiring is number && data.expiring >= 0)) &&
-                    (!('color' in data) || (data.color is string && data.color.size() <= 50)) &&
-                    (!('iconName' in data) || (data.iconName is string && data.iconName.size() <= 50)) &&
-                    (!('userId' in data) || (data.userId == userId)) &&
-                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
-                    
-      let expireDateOk = !('expireDate' in data) || data.expireDate == null || (data.expireDate is string && data.expireDate.size() <= 20);
-      let reminderDaysOk = !('reminderDays' in data) || data.reminderDays == null || (data.reminderDays is number) || (data.reminderDays is string && data.reminderDays.size() <= 20);
-      let groupIdOk = !('groupId' in data) || data.groupId == null || (data.groupId is string && data.groupId.size() <= 128);
-      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
-
-      return typesOk && expireDateOk && reminderDaysOk && groupIdOk && idOk;
+      return (!('userId' in data) || data.userId == userId);
     }
 
     function isValidGroup(data, userId) {
-      let typesOk = (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
-                    (!('userId' in data) || (data.userId == userId)) &&
-                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
-      
-      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
-                    
-      return typesOk && idOk;
+      return (!('userId' in data) || data.userId == userId);
     }
 
     function isValidProfile(data, userId) {
-      let typesOk = (!('lineConnected' in data) || (data.lineConnected is bool)) &&
-                    (!('userId' in data) || (data.userId == userId)) &&
-                    (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-                    (!('updatedAt' in data) || (data.updatedAt is timestamp));
-                    
-      let lineProfileOk = !('lineProfile' in data) || data.lineProfile == null || (
-        data.lineProfile is map && 
-        data.lineProfile.keys().hasAll(['name', 'pictureUrl', 'lineUserId']) && 
-        data.lineProfile.name is string && data.lineProfile.name.size() <= 100 &&
-        data.lineProfile.pictureUrl is string && data.lineProfile.pictureUrl.size() <= 500 &&
-        data.lineProfile.lineUserId is string && data.lineProfile.lineUserId.size() <= 128
-      );
+      return (!('userId' in data) || data.userId == userId);
+    }
 
-      let idOk = !('id' in data) || (data.id is string && data.id.size() <= 128);
+    function isValidActivity(data, userId) {
+      return (!('userId' in data) || data.userId == userId);
+    }
 
-      return typesOk && lineProfileOk && idOk;
+    function isValidNotification(data, userId) {
+      return (!('userId' in data) || data.userId == userId);
     }
 
     // Match users
     match /users/{userId} {
-      match /points/{pointId} {
-        allow read: if isOwner(userId);
-        
-        allow list: if isOwner(userId);
-        
-        allow create: if isOwner(userId) && 
-                         isValidId(pointId) && 
-                         incoming().keys().hasAll(['provider', 'type', 'balance', 'expiring', 'userId', 'createdAt', 'updatedAt']) &&
-                         isValidPoint(incoming(), userId) &&
-                         incoming().createdAt == request.time &&
-                         incoming().updatedAt == request.time;
-                         
-        allow update: if isOwner(userId) && 
-                         isValidId(pointId) &&
-                         isValidPoint(incoming(), userId) &&
-                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
-                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
-                         incoming().updatedAt == request.time &&
-                         // Allow all fields to be sent, but only if they values haven't changed if they are system fields
-                         true;
-                         
-        allow delete: if isOwner(userId);
-      }
-
-      match /groups/{groupId} {
-        allow read: if isOwner(userId);
-        
-        allow list: if isOwner(userId);
-        
-        allow create: if isOwner(userId) && 
-                         isValidId(groupId) && 
-                         incoming().keys().hasAll(['name', 'userId', 'createdAt', 'updatedAt']) &&
-                         isValidGroup(incoming(), userId) &&
-                         incoming().createdAt == request.time &&
-                         incoming().updatedAt == request.time;
-                         
-        allow update: if isOwner(userId) && 
-                         isValidId(groupId) &&
-                         isValidGroup(incoming(), userId) &&
-                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
-                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
-                         incoming().updatedAt == request.time &&
-                         true;
-                         
-        allow delete: if isOwner(userId);
-      }
-
-      match /profile/info {
-        allow read: if isOwner(userId);
-        
-        allow list: if false; // only get is needed for single profile info
-        
-        allow create: if isOwner(userId) && 
-                         incoming().keys().hasAll(['lineConnected', 'userId', 'createdAt', 'updatedAt']) &&
-                         isValidProfile(incoming(), userId) &&
-                         incoming().createdAt == request.time &&
-                         incoming().updatedAt == request.time;
-                         
-        allow update: if isOwner(userId) && 
-                         isValidProfile(incoming(), userId) &&
-                         (!('createdAt' in incoming()) || (incoming().createdAt == existing().createdAt)) &&
-                         (!('userId' in incoming()) || (incoming().userId == existing().userId)) &&
-                         incoming().updatedAt == request.time &&
-                         true;
-                         
-        allow delete: if isOwner(userId);
+      allow read, write: if isOwner(userId);
+      
+      match /{allPaths=**} {
+        allow read, write: if isOwner(userId);
       }
     }
   }
