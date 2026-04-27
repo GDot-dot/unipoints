@@ -1,0 +1,6 @@
+{
+  "name": "UniPoints",
+  "description": "全方位點數整合平台，支援點數到期提醒、活動拖曳管理及 LINE Bot 通知整合。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
