@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { 
   Home, 
   ListTodo, 
   Bell, 
+  BellOff,
   Settings, 
   Wallet, 
   AlertCircle, 
@@ -97,7 +98,27 @@ export default function UniPointsApp() {
   const [groups, setGroups] = useState<PointGroup[]>([]);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
   const [lineConnected, setLineConnected] = useState(false);
-  const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string} | null>(null);
+  const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string, lineUserId: string} | null>(null);
+
+  // Dynamic notifications based on points
+  const dynamicNotifications = useMemo(() => {
+    const notes = [...NOTIFICATIONS]; // Start with system notes
+    
+    // Add point expiry notes
+    points.forEach(p => {
+      if (p.expiring > 0 && p.expireDate) {
+        notes.unshift({
+          id: `expiry-${p.id}`,
+          title: `點數到期通知: ${p.provider}`,
+          message: `您有 ${p.expiring} 點 ${p.type} 將於 ${p.expireDate} 到期。`,
+          time: '系統自動生成',
+          isUnread: true
+        });
+      }
+    });
+    
+    return notes.slice(0, 5); // Only show top 5
+  }, [points]);
 
   useEffect(() => {
     if (!user) return; // user will load eventually
@@ -286,9 +307,9 @@ export default function UniPointsApp() {
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} />}
+          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} />}
           {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} setActivities={setActivities} />}
-          {activeTab === 'notifications' && <NotificationsTab key="notifications" />}
+          {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={dynamicNotifications} />}
           {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} />}
         </AnimatePresence>
       </main>
@@ -328,7 +349,7 @@ export default function UniPointsApp() {
 
 // ======= Individual Tabs =======
 
-function HomeTab({ points, groups, user, logout }: { points: Point[], groups: PointGroup[], user: any, logout: () => void }) {
+function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: { points: Point[], groups: PointGroup[], user: any, logout: () => void, lineConnected: boolean, lineProfile: any }) {
   const [editingPoint, setEditingPoint] = useState<Point | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -558,6 +579,8 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
                       onEdit={() => setEditingPoint(point)}
                       onDragStart={onDragStart}
                       isDragging={draggedId === point.id}
+                      lineConnected={lineConnected}
+                      lineProfile={lineProfile}
                     />
                   ))}
                   {groupPoints.length === 0 && isHovered && (
@@ -591,6 +614,8 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
                    onEdit={() => setEditingPoint(point)} 
                    onDragStart={onDragStart}
                    isDragging={draggedId === point.id}
+                   lineConnected={lineConnected}
+                   lineProfile={lineProfile}
                  />
                </div>
              );
@@ -608,9 +633,33 @@ function HomeTab({ points, groups, user, logout }: { points: Point[], groups: Po
   )
 }
 
-function PointCard({ point, onEdit, onDragStart, isDragging }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean }) {
+function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any }) {
   const Icon = ICON_MAP[point.iconName] || Store;
   const isInfinite = point.expireDate === null;
+
+  const handleManualNotify = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!lineConnected || !lineProfile) return;
+
+    try {
+      const res = await fetch('/api/line/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: lineProfile.lineUserId,
+          message: `🔔 UniPoints 到期通知\n點數通路: ${point.provider}\n點數類型: ${point.type}\n即將到期: ${point.expiring} 點\n到期日期: ${point.expireDate}\n\n請記得於到期前進行消費或兌換唷！`
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ 通知已發送至您的 LINE！');
+      } else {
+        alert(`❌ 發送失敗: ${data.error || '未知錯誤'}`);
+      }
+    } catch (err) {
+      alert('❌ 發生錯誤，無法發送通知。');
+    }
+  };
 
   return (
     <div 
@@ -636,8 +685,23 @@ function PointCard({ point, onEdit, onDragStart, isDragging }: { point: Point, o
         </div>
       </div>
       <div className="text-right flex flex-col items-end">
-        <p className="font-black text-gray-900 text-xl tracking-tight">{point.balance.toLocaleString()}</p>
-        {point.expiring > 0 && <p className="text-red-500 text-[10px] mt-1 font-bold bg-red-50 px-2 py-0.5 rounded-full">{point.expiring} 點即將失效</p>}
+        <div className="flex items-center space-x-2">
+          <p className="font-black text-gray-900 text-xl tracking-tight">{point.balance.toLocaleString()}</p>
+        </div>
+        {point.expiring > 0 && (
+          <div className="flex items-center space-x-1 mt-1">
+            {lineConnected && (
+              <button 
+                onClick={handleManualNotify}
+                className="p-1 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                title="發送 LINE 提醒"
+              >
+                <MessageCircle className="w-3" />
+              </button>
+            )}
+            <p className="text-red-500 text-[10px] font-bold bg-red-50 px-2 py-0.5 rounded-full">{point.expiring} 點即將失效</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -770,7 +834,7 @@ function ActivitiesTab({ activities, setActivities }: { activities: any[], setAc
   )
 }
 
-function NotificationsTab() {
+function NotificationsTab({ notifications }: { notifications: any[] }) {
   return (
     <div className="h-full overflow-y-auto pb-24 p-6 md:p-10 space-y-8 max-w-3xl">
       <div>
@@ -779,7 +843,7 @@ function NotificationsTab() {
       </div>
       
       <div className="space-y-4">
-        {NOTIFICATIONS.map((note) => (
+        {notifications.map((note) => (
           <div key={note.id} className={clsx("p-6 rounded-3xl border transition-all relative overflow-hidden", note.isUnread ? "bg-blue-50/40 border-blue-100 shadow-sm" : "bg-white border-gray-100")}>
             {note.isUnread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />}
             <div className="flex justify-between items-start mb-2">
@@ -793,6 +857,12 @@ function NotificationsTab() {
             </p>
           </div>
         ))}
+        {notifications.length === 0 && (
+          <div className="text-center py-20 bg-gray-50 rounded-[3rem] border border-dashed border-gray-200">
+             <BellOff className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+             <p className="text-gray-400 font-bold">目前沒有任何通知</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -892,8 +962,8 @@ function SettingsTab({ lineConnected, lineProfile, user }: { lineConnected: bool
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        userId: lineProfile.userId,
-                        message: `🔔 測試通知成功！\n您有點數即將到期，請記得查看 UniPoints！\n您的 LINE ID: ${lineProfile.userId.slice(0, 8)}...`
+                        userId: lineProfile.lineUserId,
+                        message: `🔔 測試通知成功！\n您有點數即將到期，請記得查看 UniPoints！\n您的 LINE ID: ${lineProfile.lineUserId.slice(0, 8)}...`
                       })
                     });
                     const data = await res.json();
