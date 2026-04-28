@@ -367,8 +367,8 @@ export default function UniPointsApp() {
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} />}
-          {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} user={user} />}
+          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} simulateDateStr={simulateDateStr} />}
+          {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} user={user} points={points} />}
           {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={allNotifications} user={user} setNotifications={setNotifications} />}
           {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} points={points} />}
         </AnimatePresence>
@@ -409,7 +409,7 @@ export default function UniPointsApp() {
 
 // ======= Individual Tabs =======
 
-function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: { points: Point[], groups: PointGroup[], user: any, logout: () => void, lineConnected: boolean, lineProfile: any }) {
+function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, simulateDateStr }: { points: Point[], groups: PointGroup[], user: any, logout: () => void, lineConnected: boolean, lineProfile: any, simulateDateStr: string }) {
   const [editingPoint, setEditingPoint] = useState<Point | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -417,7 +417,16 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
   const [hoverAction, setHoverAction] = useState<'group' | 'merge' | null>(null);
   const [showValueDescription, setShowValueDescription] = useState(false);
 
-  const expiringTotal = points.reduce((acc, curr) => acc + curr.expiring, 0);
+  const isExpiringSoon = (point: Point) => {
+    if (point.expiring <= 0 || !point.expireDate) return false;
+    const today = simulateDateStr ? new Date(simulateDateStr) : new Date();
+    const expDate = new Date(point.expireDate);
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 90;
+  };
+
+  const expiringTotal = points.reduce((acc, curr) => acc + (isExpiringSoon(curr) ? curr.expiring : 0), 0);
   const totalValue = points.reduce((acc, curr) => acc + (curr.balance * (curr.provider === '國泰世華' ? 1 : 0.8)), 0);
 
   // Drag and drop logic
@@ -662,6 +671,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
                       lineConnected={lineConnected}
                       lineProfile={lineProfile}
                       user={user}
+                      isExpiringSoon={isExpiringSoon(point)}
                     />
                   ))}
                   {groupPoints.length === 0 && isHovered && (
@@ -698,6 +708,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
                    lineConnected={lineConnected}
                    lineProfile={lineProfile}
                    user={user}
+                   isExpiringSoon={isExpiringSoon(point)}
                  />
                </div>
              );
@@ -715,7 +726,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile }: {
   )
 }
 
-function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile, user }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any, user: any }) {
+function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile, user, isExpiringSoon }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any, user: any, isExpiringSoon?: boolean }) {
   const Icon = ICON_MAP[point.iconName] || Store;
   const isInfinite = point.expireDate === null;
 
@@ -782,7 +793,7 @@ function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, line
         <div className="flex items-center space-x-2">
           <p className="font-black text-gray-900 text-xl tracking-tight">{point.balance.toLocaleString()}</p>
         </div>
-        {point.expiring > 0 && (
+        {isExpiringSoon && (
           <div className="flex items-center space-x-1 mt-1">
             {lineConnected && (
               <button 
@@ -1057,7 +1068,7 @@ function ActivityItem({ item, onEdit, onDelete, activeItemId, setActiveItemId, c
   );
 }
 
-function ActivitiesTab({ activities, user }: { activities: Activity[], user: any }) {
+function ActivitiesTab({ activities, user, points }: { activities: Activity[], user: any, points: Point[] }) {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
@@ -1128,16 +1139,22 @@ function ActivitiesTab({ activities, user }: { activities: Activity[], user: any
       </div>
 
       <AnimatePresence>
-        {editingActivity && <EditActivityModal activity={editingActivity} onClose={() => setEditingActivity(null)} onSave={handleSaveActivity} onDelete={handleDeleteActivity} />}
-        {isAddingMode && <EditActivityModal isNew onClose={() => setIsAddingMode(false)} onSave={handleSaveActivity} onDelete={()=>{}} />}
+        {editingActivity && <EditActivityModal activity={editingActivity} onClose={() => setEditingActivity(null)} onSave={handleSaveActivity} onDelete={handleDeleteActivity} points={points} />}
+        {isAddingMode && <EditActivityModal isNew onClose={() => setIsAddingMode(false)} onSave={handleSaveActivity} onDelete={()=>{}} points={points} />}
       </AnimatePresence>
     </div>
   )
 }
 
-function EditActivityModal({ activity, isNew, onClose, onSave, onDelete }: { activity?: Activity, isNew?: boolean, onClose: () => void, onSave: (a: Activity) => void, onDelete: (id: string) => void }) {
+function EditActivityModal({ activity, isNew, onClose, onSave, onDelete, points }: { activity?: Activity, isNew?: boolean, onClose: () => void, onSave: (a: Activity) => void, onDelete: (id: string) => void, points: Point[] }) {
   const [formData, setFormData] = useState<Activity>(() => activity || {
     id: `a-${crypto.randomUUID()}`, title: '', cost: '', provider: '', tag: '推薦', description: ''
+  });
+
+  const uniqueProviders = Array.from(new Set(points.map(p => p.provider).filter(Boolean)));
+  const [isCustomProvider, setIsCustomProvider] = useState(() => {
+    if (!activity?.provider) return false;
+    return !uniqueProviders.includes(activity.provider);
   });
 
   return (
@@ -1164,7 +1181,53 @@ function EditActivityModal({ activity, isNew, onClose, onSave, onDelete }: { act
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">點數平台</label>
-              <input type="text" value={formData.provider} onChange={e=>setFormData({...formData, provider: e.target.value})} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：國泰世華" />
+              {!isCustomProvider && uniqueProviders.length > 0 ? (
+                <div className="relative">
+                  <select 
+                    value={uniqueProviders.includes(formData.provider) ? formData.provider : (formData.provider && !uniqueProviders.includes(formData.provider) ? 'other' : '')} 
+                    onChange={e => {
+                      if (e.target.value === 'other') {
+                        setIsCustomProvider(true);
+                        setFormData({...formData, provider: ''});
+                      } else {
+                        setFormData({...formData, provider: e.target.value});
+                      }
+                    }} 
+                    className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                  >
+                    <option value="" disabled>請選擇點數平台</option>
+                    {uniqueProviders.map(p => <option key={p} value={p}>{p}</option>)}
+                    <option value="other">＋ 自行輸入其他平台...</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-gray-400 text-xs font-bold">
+                    ▼
+                  </div>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={formData.provider} 
+                    onChange={e=>setFormData({...formData, provider: e.target.value})} 
+                    className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" 
+                    placeholder="例如：國泰世華" 
+                    autoFocus={isCustomProvider && uniqueProviders.length > 0}
+                  />
+                  {uniqueProviders.length > 0 && (
+                     <button 
+                       onClick={() => {
+                         setIsCustomProvider(false);
+                         if (uniqueProviders.length > 0 && !uniqueProviders.includes(formData.provider)) {
+                           setFormData({...formData, provider: uniqueProviders[0]});
+                         }
+                       }}
+                       className="absolute right-3 top-3 text-xs font-bold text-blue-500 hover:text-blue-600"
+                     >
+                       返回選單
+                     </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div>
