@@ -165,12 +165,14 @@ export default function UniPointsApp() {
 
     const activitiesRef = collection(db, 'users', user.uid, 'activities');
     const unsubActivities = onSnapshot(activitiesRef, (snapshot) => {
-      if (snapshot.empty && activities.length === 0) {
-        setActivities(INITIAL_ACTIVITIES as Activity[]);
-      } else {
-        const a = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Activity));
-        setActivities(a);
-      }
+      setActivities(prev => {
+        if (snapshot.empty && prev.length === 0) {
+          return INITIAL_ACTIVITIES as Activity[];
+        } else if (!snapshot.empty) {
+          return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Activity));
+        }
+        return prev;
+      });
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}/activities`);
     });
