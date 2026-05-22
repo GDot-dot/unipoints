@@ -121,6 +121,9 @@ export default function UniPointsApp() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lineConnected, setLineConnected] = useState(false);
   const [lineProfile, setLineProfile] = useState<{name: string, pictureUrl: string, lineUserId: string} | null>(null);
+  
+  const [tgConnected, setTgConnected] = useState(false);
+  const [tgChatId, setTgChatId] = useState<string | null>(null);
 
   const [simulateDateStr, setSimulateDateStr] = useState<string>('');
 
@@ -268,6 +271,8 @@ export default function UniPointsApp() {
         const data = docSnap.data();
         setLineConnected(data.lineConnected || false);
         setLineProfile(data.lineProfile || null);
+        setTgConnected(data.tgConnected || false);
+        setTgChatId(data.tgChatId || null);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}/profile/info`);
@@ -356,10 +361,14 @@ export default function UniPointsApp() {
           </nav>
         </div>
         
-        <div className="mt-auto p-6">
+        <div className="mt-auto p-6 space-y-3">
            <div className={clsx("p-4 rounded-2xl flex items-center space-x-3 text-sm font-semibold transition-colors", lineConnected ? "bg-[#06C755]/10 text-[#06C755]" : "bg-gray-50 text-gray-400")}>
              <MessageCircle className="w-5 h-5" />
              <span>{lineConnected ? 'LINE 已連動' : '未連動 LINE'}</span>
+           </div>
+           <div className={clsx("p-4 rounded-2xl flex items-center space-x-3 text-sm font-semibold transition-colors", tgConnected ? "bg-[#24A1DE]/10 text-[#24A1DE]" : "bg-gray-50 text-gray-400")}>
+             <MessageCircle className="w-5 h-5" />
+             <span>{tgConnected ? 'TG 已連動' : '未連動 TG'}</span>
            </div>
         </div>
       </aside>
@@ -367,10 +376,10 @@ export default function UniPointsApp() {
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} simulateDateStr={simulateDateStr} />}
+          {activeTab === 'home' && <HomeTab key="home" points={points} groups={groups} user={user} logout={logout} lineConnected={lineConnected} lineProfile={lineProfile} tgConnected={tgConnected} tgChatId={tgChatId} simulateDateStr={simulateDateStr} />}
           {activeTab === 'activities' && <ActivitiesTab key="activities" activities={activities} user={user} points={points} />}
           {activeTab === 'notifications' && <NotificationsTab key="notifications" notifications={allNotifications} user={user} setNotifications={setNotifications} />}
-          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} points={points} />}
+          {activeTab === 'settings' && <SettingsTab key="settings" lineConnected={lineConnected} lineProfile={lineProfile} tgConnected={tgConnected} tgChatId={tgChatId} user={user} simulateDateStr={simulateDateStr} setSimulateDateStr={setSimulateDateStr} points={points} />}
         </AnimatePresence>
       </main>
 
@@ -409,7 +418,7 @@ export default function UniPointsApp() {
 
 // ======= Individual Tabs =======
 
-function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, simulateDateStr }: { points: Point[], groups: PointGroup[], user: any, logout: () => void, lineConnected: boolean, lineProfile: any, simulateDateStr: string }) {
+function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, tgConnected, tgChatId, simulateDateStr }: { points: Point[], groups: PointGroup[], user: any, logout: () => void, lineConnected: boolean, lineProfile: any, tgConnected: boolean, tgChatId: string | null, simulateDateStr: string }) {
   const [editingPoint, setEditingPoint] = useState<Point | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -670,6 +679,8 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, sim
                       isDragging={draggedId === point.id}
                       lineConnected={lineConnected}
                       lineProfile={lineProfile}
+                      tgConnected={tgConnected}
+                      tgChatId={tgChatId}
                       user={user}
                       isExpiringSoon={isExpiringSoon(point)}
                     />
@@ -707,6 +718,8 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, sim
                    isDragging={draggedId === point.id}
                    lineConnected={lineConnected}
                    lineProfile={lineProfile}
+                   tgConnected={tgConnected}
+                   tgChatId={tgChatId}
                    user={user}
                    isExpiringSoon={isExpiringSoon(point)}
                  />
@@ -726,7 +739,7 @@ function HomeTab({ points, groups, user, logout, lineConnected, lineProfile, sim
   )
 }
 
-function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile, user, isExpiringSoon }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any, user: any, isExpiringSoon?: boolean }) {
+function PointCard({ point, onEdit, onDragStart, isDragging, lineConnected, lineProfile, tgConnected, tgChatId, user, isExpiringSoon }: { point: Point, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void, isDragging?: boolean, lineConnected?: boolean, lineProfile?: any, tgConnected?: boolean, tgChatId?: string | null, user: any, isExpiringSoon?: boolean }) {
   const Icon = ICON_MAP[point.iconName] || Store;
   const isInfinite = point.expireDate === null;
 
@@ -1306,11 +1319,32 @@ function NotificationsTab({ notifications, user, setNotifications }: { notificat
   )
 }
 
-function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSimulateDateStr, points }: { lineConnected: boolean, lineProfile: any, user: any, simulateDateStr: string, setSimulateDateStr: (s: string) => void, points: Point[] }) {
+function SettingsTab({ lineConnected, lineProfile, tgConnected, tgChatId, user, simulateDateStr, setSimulateDateStr, points }: { lineConnected: boolean, lineProfile: any, tgConnected: boolean, tgChatId: string | null, user: any, simulateDateStr: string, setSimulateDateStr: (s: string) => void, points: Point[] }) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [tgInput, setTgInput] = useState(tgChatId || "");
+  const [isSavingTg, setIsSavingTg] = useState(false);
+
+  const handleTgSave = async () => {
+    setIsSavingTg(true);
+    try {
+      if (tgInput) {
+        await setDoc(doc(db, 'users', user.uid, 'profile', 'info'), { tgConnected: true, tgChatId: tgInput }, { merge: true });
+        alert('✅ Telegram 綁定成功！');
+      } else {
+        await setDoc(doc(db, 'users', user.uid, 'profile', 'info'), { tgConnected: false, tgChatId: null }, { merge: true });
+      }
+    } catch (err: any) {
+      alert('儲存失敗: ' + err.message);
+    } finally {
+      setIsSavingTg(false);
+    }
+  };
 
   const handleSimulateNotification = async () => {
-    if (!lineConnected || !lineProfile) return;
+    if ((!lineConnected || !lineProfile) && !tgConnected) {
+      alert('請先綁定 LINE 或 Telegram 帳號');
+      return;
+    }
     
     const today = simulateDateStr ? new Date(simulateDateStr) : new Date();
     const duePoints = points.filter(p => {
@@ -1339,22 +1373,38 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
         const diffDays = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         const messageText = `🔔 UniPoints 到期自動提醒 (模擬測試)\n----------------------------\n點數通路: ${point.provider}\n點數類型: ${point.type}\n即將到期: ${point.expiring} 點\n到期日期: ${point.expireDate} (約於 ${diffDays} 天後)\n\n請記得於到期前進行消費或兌換唷！`;
 
-        const res = await fetch('/api/line/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: lineProfile.lineUserId,
-            message: messageText
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
+        let notified = false;
+
+        if (lineConnected && lineProfile) {
+          const res = await fetch('/api/line/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: lineProfile.lineUserId,
+              message: messageText
+            })
+          });
+          const data = await res.json();
+          if (data.success) notified = true;
+        }
+
+        if (tgConnected && tgChatId) {
+          const res = await fetch('/api/telegram/notify', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ chatId: tgChatId, message: messageText })
+          });
+          const data = await res.json();
+          if (data.success) notified = true;
+        }
+
+        if (notified) {
           // Sync with in-app notifications
           const noteId = `n-${crypto.randomUUID()}`;
           await setDoc(doc(db, 'users', user.uid, 'notifications', noteId), {
             id: noteId,
-            title: '觸發自動 LINE 提醒 (模擬)',
-            message: `已針對 ${point.provider} 發送模擬提醒至 LINE。`,
+            title: '觸發自動提醒 (模擬)',
+            message: `已針對 ${point.provider} 發送模擬提醒。`,
             time: '現在',
             isUnread: true,
             userId: user.uid
@@ -1362,7 +1412,7 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
           successCount++;
         }
       }
-      alert(`✅ 模擬任務完成！已發送 ${successCount} 則 LINE 通知。`);
+      alert(`✅ 模擬任務完成！已發送 ${successCount} 則通知。`);
     } catch (err) {
       console.error(err);
       alert('❌ 模擬發送失敗。');
@@ -1520,6 +1570,87 @@ function SettingsTab({ lineConnected, lineProfile, user, simulateDateStr, setSim
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100 relative overflow-hidden group">
+        {tgConnected && <div className="absolute top-0 right-0 w-64 h-64 bg-[#24A1DE]/10 rounded-bl-full -z-10 blur-3xl transition-opacity duration-1000"></div>}
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between z-10 relative">
+          <div className="flex items-center space-x-5">
+            <div className={clsx("w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-sm transition-all duration-500", tgConnected ? "bg-[#24A1DE] shadow-[#24A1DE]/20" : "bg-gray-200")}>
+              <MessageCircle className="w-7 h-7" />
+            </div>
+            <div>
+              <h4 className="font-black text-xl text-gray-900">Telegram Bot 綁定</h4>
+              <p className="text-gray-500 text-sm mt-1 font-medium">透過 Telegram 接收點數到期通知</p>
+            </div>
+          </div>
+          
+          <div className="flex flex-col mt-6 md:mt-0 space-y-3 md:w-80">
+            {tgConnected ? (
+              <div className="flex flex-col space-y-2">
+                <p className="text-xs text-[#24A1DE] font-bold bg-[#24A1DE]/10 px-3 py-2 rounded-xl text-center">已綁定 Chat ID: {tgChatId}</p>
+                <button
+                  onClick={() => {
+                    setTgInput("");
+                    setDoc(doc(db, 'users', user.uid, 'profile', 'info'), { tgConnected: false, tgChatId: null }, { merge: true });
+                  }}
+                  className="bg-gray-100 text-gray-600 hover:bg-gray-200 h-10 rounded-xl font-bold transition-all text-sm"
+                >
+                  解除綁定
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col space-y-2">
+                <input
+                  type="text"
+                  placeholder="輸入您的 Telegram Chat ID"
+                  value={tgInput}
+                  onChange={(e) => setTgInput(e.target.value)}
+                  className="bg-gray-50 border-none rounded-xl px-4 py-2 text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-[#24A1DE] outline-none"
+                />
+                <button
+                  onClick={handleTgSave}
+                  disabled={isSavingTg || !tgInput.trim()}
+                  className="bg-[#24A1DE] text-white hover:bg-[#1E8BBF] shadow-md shadow-[#24A1DE]/20 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none h-10 rounded-xl font-bold transition-all text-sm"
+                >
+                  {isSavingTg ? '儲存中...' : '確認綁定'}
+                </button>
+              </div>
+            )}
+            
+            {tgConnected && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/telegram/notify', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        chatId: tgChatId,
+                        message: `🔔 測試通知成功！\n您有點數即將到期，請記得查看 UniPoints！`
+                      })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      alert('✅ 測試通知已發送，請檢查 Telegram！');
+                    } else {
+                      alert(`❌ 發送失敗: ${data.error}`);
+                    }
+                  } catch (e) {
+                    alert('❌ 發生異常，請確認環境變數設定。');
+                  }
+                }}
+                className="text-[10px] font-bold text-[#24A1DE] hover:underline text-center"
+              >
+                發送測試通知
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 font-medium leading-relaxed">
+          請先與您的 Telegram Bot 聊天並獲取您的 Chat ID (可透過 <strong>@userinfobot</strong> 等工具查詢)，然後在此輸入以綁定。
+        </div>
       </div>
 
       <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
